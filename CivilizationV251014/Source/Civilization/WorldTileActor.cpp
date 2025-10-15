@@ -193,7 +193,23 @@ void AWorldTileActor::OnTileClicked(UPrimitiveComponent* TouchedComponent, FKey 
 	// 좌클릭만 처리
 	if (ButtonPressed == EKeys::LeftMouseButton)
 	{
-		// TODO: 타일 선택 로직 (WorldComponent에 알림)
+		// 타일 좌표 로그 출력
+		if (TileData)
+		{
+			FVector2D HexPos = TileData->GetGridPosition();
+			FVector WorldPos = TileData->GetWorldPosition();
+			FString ClimateID = TileData->GetClimateTypeID().ToString();
+			FString LandTypeID = TileData->GetLandTypeID().ToString();
+			
+			UE_LOG(LogTemp, Warning, TEXT("===== 타일 클릭 ====="));
+			UE_LOG(LogTemp, Warning, TEXT("육각형 좌표: Q=%d, R=%d"), (int32)HexPos.X, (int32)HexPos.Y);
+			UE_LOG(LogTemp, Warning, TEXT("월드 좌표: X=%.1f, Y=%.1f, Z=%.1f"), WorldPos.X, WorldPos.Y, WorldPos.Z);
+			UE_LOG(LogTemp, Warning, TEXT("기후대: %s"), *ClimateID);
+			UE_LOG(LogTemp, Warning, TEXT("지형: %s"), *LandTypeID);
+			UE_LOG(LogTemp, Warning, TEXT("===================="));
+		}
+		
+		// 타일 선택
 		SetSelected(!bIsSelected);
 	}
 }

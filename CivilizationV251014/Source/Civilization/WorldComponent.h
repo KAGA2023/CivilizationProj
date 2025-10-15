@@ -203,18 +203,6 @@ public:
     UFUNCTION(BlueprintCallable, Category = "World Generation")
     void GeneratePangaeaTerrain(); // 판게아 스타일 지형 생성
 
-    UFUNCTION(BlueprintCallable, Category = "World Generation")
-    void EnsureLandConnectivity(); // 육지 연결성 보장
-
-    UFUNCTION(BlueprintCallable, Category = "World Generation")
-    void ConnectDisconnectedLand(const TSet<FVector2D>& ConnectedLand); // 분리된 육지 연결
-
-    UFUNCTION(BlueprintCallable, Category = "World Generation")
-    void ConnectIslandToMainland(const TSet<FVector2D>& Island, const TSet<FVector2D>& Mainland); // 섬을 메인 육지에 연결
-
-    UFUNCTION(BlueprintCallable, Category = "World Generation")
-    FVector2D GetIslandCenter(const TSet<FVector2D>& Island) const; // 섬의 중심점 계산
-
     // 통계 및 정보
     UFUNCTION(BlueprintCallable, Category = "World Statistics")
     int32 GetLandTileCount() const; // 땅 타일 수

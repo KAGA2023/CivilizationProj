@@ -37,11 +37,11 @@ protected:
 	UInputAction* IA_Wheel; // 마우스 휠
 
 	// 입력 처리 함수들
-	void OnLMB_Pressed(); // 좌클릭 시작
+	void OnLMB_Pressed(); // 좌클릭 시작 (타일 선택 전용)
 	void OnLMB_Released(); // 좌클릭 종료
-	void OnRMB_Pressed(); // 우클릭 시작
+	void OnRMB_Pressed(); // 우클릭 시작 (카메라 팬)
 	void OnRMB_Released(); // 우클릭 종료
-	void OnWheel_Triggered(const FInputActionInstance& Instance); // 마우스 휠
+	void OnWheel_Triggered(const FInputActionInstance& Instance); // 마우스 휠 (줌)
 
 	// 카메라 컨트롤 변수들
 	bool bIsPanning; // 카메라 팬 상태

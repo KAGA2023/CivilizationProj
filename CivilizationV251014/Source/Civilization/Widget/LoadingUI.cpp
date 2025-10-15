@@ -127,10 +127,10 @@ void ULoadingUI::NativeTick(const FGeometry& MyGeometry, float DeltaTime)
 		switch (CurrentLoadingStage)
 		{
 		case ELoadingStage::WorldGeneration:
-			ProgressSpeed = 0.2f; // 월드 생성
+			ProgressSpeed = 0.5f; // 월드 생성
 			break;
 		case ELoadingStage::LevelLoading:
-			ProgressSpeed = 0.2f; // 레벨 로딩
+			ProgressSpeed = 0.5f; // 레벨 로딩
 			break;
 		}
 		

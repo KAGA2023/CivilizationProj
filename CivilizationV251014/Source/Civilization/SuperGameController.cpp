@@ -18,8 +18,8 @@ ASuperGameController::ASuperGameController()
 	CurrentMousePosition = FVector2D::ZeroVector;
 
 	// 카메라 설정 기본값
-	PanSpeed = 2.0f;
-	ZoomSpeed = 100.0f; // 줌 속도 낮춰서 부드럽게
+	PanSpeed = 3.0f;
+	ZoomSpeed = 200.0f; // 줌 속도 낮춰서 부드럽게
 	MinZoomDistance = 500.0f;
 	MaxZoomDistance = 5000.0f;
 
@@ -45,6 +45,10 @@ void ASuperGameController::BeginPlay()
 
 	// 마우스 커서 표시
 	bShowMouseCursor = true;
+	
+	// 클릭 이벤트 활성화 (타일 클릭 감지용)
+	bEnableClickEvents = true;
+	bEnableMouseOverEvents = true;
 
 	// 입력 모드 설정 (게임 + UI)
 	FInputModeGameAndUI InputMode;
@@ -82,26 +86,25 @@ void ASuperGameController::Tick(float DeltaTime)
 
 void ASuperGameController::OnLMB_Pressed()
 {
-	// 좌클릭 시작 - 카메라 팬 시작
-	bIsPanning = true;
-	LastMousePosition = GetMousePosition();
+	// 좌클릭 시작 - 타일 클릭 전용 (WorldTileActor에서 처리)
 }
 
 void ASuperGameController::OnLMB_Released()
 {
-	// 좌클릭 종료 - 카메라 팬 종료
-	bIsPanning = false;
+	// 좌클릭 종료
 }
 
 void ASuperGameController::OnRMB_Pressed()
 {
-	// 우클릭 시작 - 현재는 사용하지 않음
-	// 나중에 컨텍스트 메뉴나 취소 기능에 사용할 수 있음
+	// 우클릭 시작 - 카메라 팬 시작
+	bIsPanning = true;
+	LastMousePosition = GetMousePosition();
 }
 
 void ASuperGameController::OnRMB_Released()
 {
-	// 우클릭 종료
+	// 우클릭 종료 - 카메라 팬 종료
+	bIsPanning = false;
 }
 
 void ASuperGameController::OnWheel_Triggered(const FInputActionInstance& Instance)

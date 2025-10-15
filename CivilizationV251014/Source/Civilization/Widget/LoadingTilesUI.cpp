@@ -79,10 +79,10 @@ void ULoadingTilesUI::NativeTick(const FGeometry& MyGeometry, float DeltaTime)
 		switch (CurrentLoadingStage)
 		{
 		case ELoadingStage::TileSpawning:
-			ProgressSpeed = 0.2f;  // 타일 스폰
+			ProgressSpeed = 0.5f;  // 타일 스폰
 			break;
 		case ELoadingStage::Finalizing:
-			ProgressSpeed = 0.2f;  // 최종 완료
+			ProgressSpeed = 0.5f;  // 최종 완료
 			break;
 		}
 		

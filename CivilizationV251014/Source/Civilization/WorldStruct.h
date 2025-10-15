@@ -329,7 +329,7 @@ struct CIVILIZATION_API FWorldConfig
     int32 WorldRadius = 25; // 월드 반지름 (타일 수)
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Settings")
-    float OceanPercentage = 0.3f; // 바다 비율
+    float OceanPercentage = 0.2f; // 바다 비율
 
     // 기후대 비율 (땅에만 적용)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Settings")
@@ -343,13 +343,13 @@ struct CIVILIZATION_API FWorldConfig
 
     // 지형 타입 비율 (땅에만 적용)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Settings")
-    float PlainsPercentage = 0.5f; // 평지 비율
+    float PlainsPercentage = 0.85f; // 평지 비율
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Settings")
-    float HillsPercentage = 0.3f; // 언덕 비율
+    float HillsPercentage = 0.1f; // 언덕 비율
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Settings")
-    float MountainPercentage = 0.2f; // 산 비율
+    float MountainPercentage = 0.05f; // 산 비율
 
     // 지형 특성 비율 (땅에만 적용)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Settings")
@@ -360,7 +360,7 @@ struct CIVILIZATION_API FWorldConfig
         WorldRadius = 25;
         
         // 바다 비율
-        OceanPercentage = 0.3f;
+        OceanPercentage = 0.2f;
         
         // 기후대 비율 (땅에만 적용)
         TemperatePercentage = 0.6f;
@@ -368,9 +368,9 @@ struct CIVILIZATION_API FWorldConfig
         TundraPercentage = 0.2f;
         
         // 지형 타입 비율 (땅에만 적용)
-        PlainsPercentage = 0.5f;
-        HillsPercentage = 0.3f;
-        MountainPercentage = 0.2f;
+        PlainsPercentage = 0.85f;
+        HillsPercentage = 0.1f;
+        MountainPercentage = 0.05f;
         
         // 지형 특성 비율
         ForestPercentage = 0.3f;

@@ -248,8 +248,8 @@ FVector2D UWorldComponent::WorldToHex(FVector WorldPosition) const
 
 bool UWorldComponent::IsValidHexPosition(FVector2D HexPosition) const
 {
-    // 원형 경계: 중심에서의 거리가 반지름 이내인지 확인
-    int32 Distance = GetHexDistance(FVector2D::ZeroVector, HexPosition);
+    // 원형 경계: 중심 타일(Q=0, R=0)에서의 거리가 반지름 이내인지 확인
+    int32 Distance = GetHexDistance(FVector2D(0, 0), HexPosition);
     return Distance <= WorldConfig.WorldRadius;
 }
 
@@ -330,36 +330,109 @@ void UWorldComponent::GenerateResources()
 
 void UWorldComponent::GenerateClimateZones()
 {
-    // 기본 기후대 생성 (나중에 복잡한 알고리즘으로 변경)
+    // 1단계: 육지 타일만 수집
+    TArray<FVector2D> LandTiles;
     for (auto& Pair : HexTiles)
     {
         if (UWorldTile* Tile = Pair.Value)
         {
             if (Tile->GetTerrainType() == ETerrainType::Land)
             {
-                // 임시로 랜덤 기후대 생성
-                float RandomValue = FMath::FRand();
-                
-                if (RandomValue < WorldConfig.TemperatePercentage)
-                {
-                    Tile->SetClimateTypeID("Temperate");
-                }
-                else if (RandomValue < WorldConfig.TemperatePercentage + WorldConfig.DesertPercentage)
-                {
-                    Tile->SetClimateTypeID("Desert");
-                }
-                else if (RandomValue < WorldConfig.TemperatePercentage + WorldConfig.DesertPercentage + WorldConfig.TundraPercentage)
-                {
-                    Tile->SetClimateTypeID("Tundra");
-                }
-                else
-                {
-                    // 기본값으로 온대 기후 설정
-                    Tile->SetClimateTypeID("Temperate");
-                }
+                LandTiles.Add(Pair.Key);
             }
         }
     }
+    
+    if (LandTiles.Num() == 0)
+    {
+        return; // 육지가 없으면 종료
+    }
+    
+    // 2단계: 북쪽/남쪽 중앙점 계산 (수학적 좌표)
+    FVector2D NorthCenter = FVector2D(-WorldConfig.WorldRadius / 2.0f, WorldConfig.WorldRadius);
+    FVector2D SouthCenter = FVector2D(WorldConfig.WorldRadius / 2.0f, -WorldConfig.WorldRadius);
+    
+    // 3단계: 툰드라 가중치 계산 및 정렬 (북쪽 중앙에 가까울수록 높음)
+    TArray<TPair<FVector2D, float>> TundraWeights;
+    float MaxDistance = (float)WorldConfig.WorldRadius * 2; // 최대 거리 (정규화용)
+    
+    for (const FVector2D& HexPos : LandTiles)
+    {
+        int32 DistanceToNorth = GetHexDistance(HexPos, NorthCenter);
+        float Noise = FMath::FRandRange(-0.2f, 0.2f); // 노이즈
+        float TundraWeight = MaxDistance - (float)DistanceToNorth + Noise;
+        
+        TundraWeights.Add(TPair<FVector2D, float>(HexPos, TundraWeight));
+    }
+    
+    // 툰드라 가중치 내림차순 정렬
+    TundraWeights.Sort([](const TPair<FVector2D, float>& A, const TPair<FVector2D, float>& B)
+    {
+        return A.Value > B.Value;
+    });
+    
+    // 4단계: 사막 가중치 계산 및 정렬 (남쪽 중앙에 가까울수록 높음)
+    TArray<TPair<FVector2D, float>> DesertWeights;
+    
+    for (const FVector2D& HexPos : LandTiles)
+    {
+        int32 DistanceToSouth = GetHexDistance(HexPos, SouthCenter);
+        float Noise = FMath::FRandRange(-0.2f, 0.2f); // 노이즈
+        float DesertWeight = MaxDistance - (float)DistanceToSouth + Noise;
+        
+        DesertWeights.Add(TPair<FVector2D, float>(HexPos, DesertWeight));
+    }
+    
+    // 사막 가중치 내림차순 정렬
+    DesertWeights.Sort([](const TPair<FVector2D, float>& A, const TPair<FVector2D, float>& B)
+    {
+        return A.Value > B.Value;
+    });
+    
+    // 5단계: 모든 육지를 먼저 온대로 초기화
+    for (const FVector2D& HexPos : LandTiles)
+    {
+        if (UWorldTile* Tile = GetTileAtHex(HexPos))
+        {
+            Tile->SetClimateTypeID("Temperate");
+        }
+    }
+    
+    // 6단계: 툰드라 할당 (북쪽 중앙에 가까운 순서대로)
+    int32 TundraCount = FMath::RoundToInt((float)LandTiles.Num() * WorldConfig.TundraPercentage);
+    TSet<FVector2D> AssignedTiles; // 중복 방지용
+    
+    for (int32 i = 0; i < TundraCount && i < TundraWeights.Num(); i++)
+    {
+        FVector2D HexPos = TundraWeights[i].Key;
+        if (UWorldTile* Tile = GetTileAtHex(HexPos))
+        {
+            Tile->SetClimateTypeID("Tundra");
+            AssignedTiles.Add(HexPos);
+        }
+    }
+    
+    // 7단계: 사막 할당 (남쪽 중앙에 가까운 순서대로, 이미 툰드라인 타일 제외)
+    int32 DesertCount = FMath::RoundToInt((float)LandTiles.Num() * WorldConfig.DesertPercentage);
+    
+    for (int32 i = 0; i < DesertWeights.Num() && AssignedTiles.Num() < TundraCount + DesertCount; i++)
+    {
+        FVector2D HexPos = DesertWeights[i].Key;
+        
+        // 이미 툰드라로 할당된 타일은 건너뛰기
+        if (AssignedTiles.Contains(HexPos))
+        {
+            continue;
+        }
+        
+        if (UWorldTile* Tile = GetTileAtHex(HexPos))
+        {
+            Tile->SetClimateTypeID("Desert");
+            AssignedTiles.Add(HexPos);
+        }
+    }
+    
+    // 나머지는 이미 온대로 설정되어 있음
 }
 
 void UWorldComponent::GenerateLandTypes()
@@ -544,7 +617,6 @@ int32 UWorldComponent::GetForestTileCount() const
     return Count;
 }
 
-
 TArray<FVector2D> UWorldComponent::FindPath(FVector2D StartHex, FVector2D EndHex) const
 {
     // 기본 경로 찾기 (나중에 A* 알고리즘으로 변경)
@@ -567,7 +639,6 @@ TArray<FVector2D> UWorldComponent::FindPath(FVector2D StartHex, FVector2D EndHex
         );
         Path.Add(InterpolatedHex);
     }
-    
     return Path;
 }
 
@@ -928,169 +999,50 @@ int32 UWorldComponent::CalculateBaseDefenseBonus(UWorldTile* Tile) const
 // 판게아 스타일 지형 생성 함수들
 void UWorldComponent::GeneratePangaeaTerrain()
 {
-    // 1단계: 중심에서 큰 육지 덩어리 생성
-    FVector2D CenterHex = FVector2D::ZeroVector;
-    int32 LandRadius = WorldConfig.WorldRadius * 2 / 3; // 반지름의 2/3를 육지로
-    
     // 모든 타일을 먼저 바다로 초기화
     for (auto& Pair : HexTiles)
     {
         Pair.Value->SetTerrainType(ETerrainType::Ocean);
     }
     
-    // 중심 주변을 육지로 설정 (원형 패턴)
+    // 1단계: 각 타일의 "육지 가중치" 계산 (거리 + 노이즈)
+    TArray<TPair<FVector2D, float>> TileWeights; // <타일 좌표, 가중치>
+    FVector2D CenterHex = FVector2D(0, 0); // 중심 타일 Q=0, R=0
+    float MaxRadius = (float)WorldConfig.WorldRadius;
+    
     for (auto& Pair : HexTiles)
     {
         FVector2D HexPos = Pair.Key;
         int32 Distance = GetHexDistance(CenterHex, HexPos);
         
-        // 기본 육지 영역 설정
-        float LandChance = 1.0f - (float)Distance / (float)LandRadius;
-        LandChance = FMath::Clamp(LandChance, 0.0f, 1.0f);
+        // 중심에서 가까울수록 높은 가중치
+        float DistanceWeight = 1.0f - ((float)Distance / MaxRadius);
         
-        // 노이즈 추가로 자연스러운 경계 만들기
-        float Noise = FMath::FRandRange(-0.3f, 0.3f);
-        LandChance += Noise;
+        // 노이즈 추가로 자연스러운 경계 만들기 (-0.2 ~ 0.2)
+        float Noise = FMath::FRandRange(-0.2f, 0.2f);
         
-        if (LandChance > 0.3f)
-        {
-            Pair.Value->SetTerrainType(ETerrainType::Land);
-        }
-    }
-    
-    // 2단계: 연결성 보장
-    EnsureLandConnectivity();
-}
-
-void UWorldComponent::EnsureLandConnectivity()
-{
-    // BFS로 연결된 육지 영역 찾기
-    TSet<FVector2D> ConnectedLand;
-    TArray<FVector2D> Queue;
-    
-    // 첫 번째 육지 타일을 시작점으로 찾기
-    for (auto& Pair : HexTiles)
-    {
-        if (Pair.Value->GetTerrainType() == ETerrainType::Land)
-        {
-            Queue.Add(Pair.Key);
-            ConnectedLand.Add(Pair.Key);
-            break;
-        }
-    }
-    
-    // BFS로 연결된 모든 육지 탐색
-    while (!Queue.IsEmpty())
-    {
-        FVector2D CurrentHex = Queue.Pop();
+        // 최종 가중치 = 거리 가중치 + 노이즈
+        float FinalWeight = DistanceWeight + Noise;
         
-        TArray<FVector2D> Neighbors = GetHexNeighbors(CurrentHex);
-        for (const FVector2D& Neighbor : Neighbors)
-        {
-            if (UWorldTile* NeighborTile = GetTileAtHex(Neighbor))
-            {
-                if (NeighborTile->GetTerrainType() == ETerrainType::Land && 
-                    !ConnectedLand.Contains(Neighbor))
-                {
-                    ConnectedLand.Add(Neighbor);
-                    Queue.Add(Neighbor);
-                }
-            }
-        }
+        TileWeights.Add(TPair<FVector2D, float>(HexPos, FinalWeight));
     }
     
-    // 분리된 육지들을 메인 육지에 연결
-    ConnectDisconnectedLand(ConnectedLand);
-}
-
-void UWorldComponent::ConnectDisconnectedLand(const TSet<FVector2D>& ConnectedLand)
-{
-    // 연결되지 않은 육지들을 찾기
-    TArray<TSet<FVector2D>> DisconnectedIslands;
-    
-    for (auto& Pair : HexTiles)
+    // 2단계: 가중치 순으로 내림차순 정렬 (높은 가중치 = 육지 우선)
+    TileWeights.Sort([](const TPair<FVector2D, float>& A, const TPair<FVector2D, float>& B)
     {
-        if (Pair.Value->GetTerrainType() == ETerrainType::Land && 
-            !ConnectedLand.Contains(Pair.Key))
-        {
-            // 새로운 섬 발견 - BFS로 섬의 모든 타일 찾기
-            TSet<FVector2D> NewIsland;
-            TArray<FVector2D> IslandQueue;
-            IslandQueue.Add(Pair.Key);
-            NewIsland.Add(Pair.Key);
-            
-            while (!IslandQueue.IsEmpty())
-            {
-                FVector2D CurrentHex = IslandQueue.Pop();
-                TArray<FVector2D> Neighbors = GetHexNeighbors(CurrentHex);
-                
-                for (const FVector2D& Neighbor : Neighbors)
-                {
-                    if (UWorldTile* NeighborTile = GetTileAtHex(Neighbor))
-                    {
-                        if (NeighborTile->GetTerrainType() == ETerrainType::Land && 
-                            !NewIsland.Contains(Neighbor))
-                        {
-                            NewIsland.Add(Neighbor);
-                            IslandQueue.Add(Neighbor);
-                        }
-                    }
-                }
-            }
-            
-            DisconnectedIslands.Add(NewIsland);
-        }
-    }
+        return A.Value > B.Value; // 내림차순
+    });
     
-    // 각 섬을 메인 육지에 연결
-    for (const TSet<FVector2D>& Island : DisconnectedIslands)
+    // 3단계: 정확한 육지 비율만큼 상위 타일을 육지로 설정
+    int32 TotalTiles = HexTiles.Num();
+    int32 LandTileCount = FMath::RoundToInt((float)TotalTiles * (1.0f - WorldConfig.OceanPercentage));
+    
+    for (int32 i = 0; i < LandTileCount && i < TileWeights.Num(); i++)
     {
-        ConnectIslandToMainland(Island, ConnectedLand);
-    }
-}
-
-void UWorldComponent::ConnectIslandToMainland(const TSet<FVector2D>& Island, const TSet<FVector2D>& Mainland)
-{
-    if (Island.Num() == 0 || Mainland.Num() == 0)
-    {
-        return;
-    }
-    
-    // 섬과 메인 육지의 중심점 찾기
-    FVector2D IslandCenter = GetIslandCenter(Island);
-    FVector2D MainlandCenter = GetIslandCenter(Mainland);
-    
-    // 두 중심점 사이의 직선 경로를 육지로 만들기
-    int32 Distance = GetHexDistance(IslandCenter, MainlandCenter);
-    
-    for (int32 i = 0; i <= Distance; i++)
-    {
-        float T = (float)i / (float)Distance;
-        FVector2D InterpolatedHex = FVector2D(
-            FMath::Lerp(IslandCenter.X, MainlandCenter.X, T),
-            FMath::Lerp(IslandCenter.Y, MainlandCenter.Y, T)
-        );
-        
-        if (UWorldTile* Tile = GetTileAtHex(InterpolatedHex))
+        FVector2D HexPos = TileWeights[i].Key;
+        if (UWorldTile* Tile = GetTileAtHex(HexPos))
         {
             Tile->SetTerrainType(ETerrainType::Land);
         }
     }
-}
-
-FVector2D UWorldComponent::GetIslandCenter(const TSet<FVector2D>& Island) const
-{
-    if (Island.Num() == 0)
-    {
-        return FVector2D::ZeroVector;
-    }
-    
-    FVector2D Center = FVector2D::ZeroVector;
-    for (const FVector2D& Hex : Island)
-    {
-        Center += Hex;
-    }
-    
-    Center /= Island.Num();
-    return Center;
 }
