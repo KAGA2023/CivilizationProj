@@ -8,13 +8,11 @@
 #include "../WorldSpawner.h"
 #include "EngineUtils.h"
 
-
 void ULoadingTilesUI::OnTileSpawnCompleted()
 {
 	// 스폰 완료 플래그 설정 (점프 없이 계속 증가)
 	bSpawnCompleted = true;
 }
-
 
 void ULoadingTilesUI::StartTileSpawning()
 {

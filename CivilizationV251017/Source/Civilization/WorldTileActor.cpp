@@ -376,51 +376,67 @@ void AWorldTileActor::OnTileClicked(UPrimitiveComponent* TouchedComponent, FKey 
 		{
 			FVector2D HexPos = TileData->GetGridPosition();
 			FVector WorldPos = TileData->GetWorldPosition();
-			FString ClimateName = TileData->GetClimateTypeName();
-			FString LandTypeName = TileData->GetLandTypeName();
 			
 			UE_LOG(LogTemp, Warning, TEXT("===== 타일 클릭 ====="));
 			UE_LOG(LogTemp, Warning, TEXT("육각형 좌표: Q=%d, R=%d"), (int32)HexPos.X, (int32)HexPos.Y);
 			UE_LOG(LogTemp, Warning, TEXT("월드 좌표: X=%.1f, Y=%.1f, Z=%.1f"), WorldPos.X, WorldPos.Y, WorldPos.Z);
-			UE_LOG(LogTemp, Warning, TEXT("기후대: %s"), *ClimateName);
-			UE_LOG(LogTemp, Warning, TEXT("지형: %s"), *LandTypeName);
 			
-			// 자원 정보 출력
-			if (TileData->HasResource())
+			// 바다 타일인지 확인
+			if (TileData->GetTerrainType() == ETerrainType::Ocean)
 			{
-				FString ResourceName;
-				switch (TileData->GetResourceCategory())
+				UE_LOG(LogTemp, Warning, TEXT("타입: 바다"));
+				UE_LOG(LogTemp, Warning, TEXT("===================="));
+			}
+			else
+			{
+				// 육지 타일의 경우 기존 상세 정보 출력
+				FString ClimateName = TileData->GetClimateTypeName();
+				FString LandTypeName = TileData->GetLandTypeName();
+				
+				UE_LOG(LogTemp, Warning, TEXT("기후대: %s"), *ClimateName);
+				UE_LOG(LogTemp, Warning, TEXT("지형: %s"), *LandTypeName);
+				
+				// 자원 정보 출력
+				if (TileData->HasResource())
 				{
-				case EResourceCategory::Bonus:
-					ResourceName = TileData->GetBonusResourceName();
-					UE_LOG(LogTemp, Warning, TEXT("보너스 자원: %s"), *ResourceName);
-					break;
-				case EResourceCategory::Strategic:
-					ResourceName = TileData->GetStrategicResourceName();
-					UE_LOG(LogTemp, Warning, TEXT("전략 자원: %s"), *ResourceName);
-					break;
-				case EResourceCategory::Luxury:
-					ResourceName = TileData->GetLuxuryResourceName();
-					UE_LOG(LogTemp, Warning, TEXT("사치 자원: %s"), *ResourceName);
-					break;
+					FString ResourceName;
+					switch (TileData->GetResourceCategory())
+					{
+					case EResourceCategory::Bonus:
+						ResourceName = TileData->GetBonusResourceName();
+						UE_LOG(LogTemp, Warning, TEXT("보너스 자원: %s"), *ResourceName);
+						break;
+					case EResourceCategory::Strategic:
+						ResourceName = TileData->GetStrategicResourceName();
+						UE_LOG(LogTemp, Warning, TEXT("전략 자원: %s"), *ResourceName);
+						break;
+					case EResourceCategory::Luxury:
+						ResourceName = TileData->GetLuxuryResourceName();
+						UE_LOG(LogTemp, Warning, TEXT("사치 자원: %s"), *ResourceName);
+						break;
+					}
 				}
+				else
+				{
+					UE_LOG(LogTemp, Warning, TEXT("자원: 없음"));
+				}
+				
+				// 숲 정보 출력
+				if (TileData->HasForest())
+				{
+					UE_LOG(LogTemp, Warning, TEXT("숲: 있음"));
+				}
+				else
+				{
+					UE_LOG(LogTemp, Warning, TEXT("숲: 없음"));
+				}
+				
+				// 이동 비용 정보 출력
+				int32 MovementCost = TileData->GetTotalMovementCost();
+				UE_LOG(LogTemp, Warning, TEXT("이동 비용: %d"), MovementCost);
+				
+				UE_LOG(LogTemp, Warning, TEXT("===================="));
 			}
-			else
-			{
-				UE_LOG(LogTemp, Warning, TEXT("자원: 없음"));
-			}
-			
-			// 숲 정보 출력
-			if (TileData->HasForest())
-			{
-				UE_LOG(LogTemp, Warning, TEXT("숲: 있음"));
-			}
-			else
-			{
-				UE_LOG(LogTemp, Warning, TEXT("숲: 없음"));
-			}
-			
-			UE_LOG(LogTemp, Warning, TEXT("===================="));
 		}
 		
 		// 타일 선택

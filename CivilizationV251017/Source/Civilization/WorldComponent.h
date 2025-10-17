@@ -199,7 +199,7 @@ public:
     int32 CalculateBaseFaithYield(UWorldTile* Tile) const; // 기본 신앙 생산량 계산
 
     UFUNCTION(BlueprintCallable, Category = "Tile Calculation")
-    float CalculateBaseMovementCost(UWorldTile* Tile) const; // 기본 이동 비용 계산
+    int32 CalculateBaseMovementCost(UWorldTile* Tile) const; // 기본 이동 비용 계산
 
     UFUNCTION(BlueprintCallable, Category = "Tile Calculation")
     int32 CalculateBaseDefenseBonus(UWorldTile* Tile) const; // 기본 방어 보너스 계산
@@ -254,13 +254,32 @@ public:
 
     // 경로 찾기 및 이동
     UFUNCTION(BlueprintCallable, Category = "Pathfinding")
-    TArray<FVector2D> FindPath(FVector2D StartHex, FVector2D EndHex) const; // 최단 경로 찾기
+    TArray<FVector2D> FindPath(FVector2D StartHex, FVector2D EndHex) const; // A* 알고리즘을 사용한 최적 경로 찾기
 
     UFUNCTION(BlueprintCallable, Category = "Pathfinding")
-    TArray<FVector2D> FindPathWithMovementCost(FVector2D StartHex, FVector2D EndHex, float MaxMovementCost) const; // 이동 비용 고려한 경로 찾기
+    TArray<FVector2D> FindPathWithMovementCost(FVector2D StartHex, FVector2D EndHex, int32 MaxMovementCost) const; // 최대 이동 비용 제한이 있는 경로 찾기
 
     UFUNCTION(BlueprintCallable, Category = "Pathfinding")
     bool CanMoveToHex(FVector2D HexPosition) const; // 해당 육각형으로 이동 가능한지 확인
+
+    UFUNCTION(BlueprintCallable, Category = "Pathfinding")
+    int32 CalculateHeuristic(FVector2D StartHex, FVector2D EndHex) const; // 휴리스틱 함수 (육각형 거리 기반)
+
+    UFUNCTION(BlueprintCallable, Category = "Pathfinding")
+    TArray<FVector2D> ReconstructPath(const TMap<FVector2D, FAStarNode>& CameFrom, FVector2D Current) const; // 경로 재구성
+
+    UFUNCTION(BlueprintCallable, Category = "Pathfinding")
+    int32 GetMovementCostBetweenHexes(FVector2D FromHex, FVector2D ToHex) const; // 두 육각형 간의 이동 비용 계산
+
+    // 층수 시스템 관련 함수들
+    UFUNCTION(BlueprintCallable, Category = "Floor System")
+    int32 GetFloorLevel(ELandType LandType) const; // 지형 타입을 층수로 변환
+
+    UFUNCTION(BlueprintCallable, Category = "Floor System")
+    bool CanMoveBetweenHexes(FVector2D FromHex, FVector2D ToHex) const; // 두 육각형 간 층수 이동 가능성 체크
+
+    UFUNCTION(BlueprintCallable, Category = "Floor System")
+    int32 GetMovementCostBetweenHexesWithFloor(FVector2D FromHex, FVector2D ToHex) const; // 층수를 고려한 이동 비용 계산
 
 private:
     // 내부 헬퍼 함수들

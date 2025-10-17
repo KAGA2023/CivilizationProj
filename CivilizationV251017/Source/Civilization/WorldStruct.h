@@ -107,7 +107,7 @@ struct CIVILIZATION_API FClimateData : public FTableRowBase
     int32 BaseFaithYield = 0; // 기본 신앙 생산량
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Climate")
-    float MovementCostMultiplier = 1.0f; // 이동 비용 배수
+    int32 MovementCost = 0; // 이동 비용 증가량
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Climate")
     int32 BaseDefenseBonus = 0; // 기본 방어 보너스
@@ -126,7 +126,7 @@ struct CIVILIZATION_API FClimateData : public FTableRowBase
         BaseGoldYield = 0;
         BaseScienceYield = 0;
         BaseFaithYield = 0;
-        MovementCostMultiplier = 1.0f;
+        MovementCost = 0;
         BaseDefenseBonus = 0;
         TileMesh = nullptr;
         ForestMesh = nullptr;
@@ -158,7 +158,7 @@ struct CIVILIZATION_API FLandTypeData : public FTableRowBase
     int32 FaithBonus = 0; // 신앙 보너스
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Land Type")
-    float MovementCostMultiplier = 1.0f; // 이동 비용 배수
+    int32 MovementCost = 0; // 이동 비용 증가량
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Land Type")
     int32 DefenseBonus = 0; // 방어 보너스
@@ -171,7 +171,7 @@ struct CIVILIZATION_API FLandTypeData : public FTableRowBase
         GoldBonus = 0;
         ScienceBonus = 0;
         FaithBonus = 0;
-        MovementCostMultiplier = 1.0f;
+        MovementCost = 0;
         DefenseBonus = 0;
     }
 };
@@ -367,7 +367,7 @@ struct CIVILIZATION_API FTileModifier
     int32 AddFaith = 0; // 신앙 증가량
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tile Modifier")
-    float MovementCostMultiplier = 1.0f; // 이동 비용 배수
+    int32 MovementCost = 0; // 이동 비용 증가량
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tile Modifier")
     int32 DefenseBonus = 0; // 방어 보너스
@@ -380,7 +380,7 @@ struct CIVILIZATION_API FTileModifier
                AddGold == Other.AddGold && 
                AddScience == Other.AddScience && 
                AddFaith == Other.AddFaith &&
-               MovementCostMultiplier == Other.MovementCostMultiplier &&
+               MovementCost == Other.MovementCost &&
                DefenseBonus == Other.DefenseBonus;
     }
 
@@ -391,7 +391,7 @@ struct CIVILIZATION_API FTileModifier
         AddGold = 0;
         AddScience = 0;
         AddFaith = 0;
-        MovementCostMultiplier = 1.0f;
+        MovementCost = 0;
         DefenseBonus = 0;
     }
 };
@@ -460,7 +460,7 @@ struct CIVILIZATION_API FTileData
     int32 CachedFaithYield = 0; // 캐시된 신앙 생산량
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Calculated")
-    float CachedMovementCost = 1.0f; // 캐시된 이동 비용
+    int32 CachedMovementCost = 1; // 캐시된 이동 비용
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Calculated")
     int32 CachedDefenseBonus = 0; // 캐시된 방어 보너스
@@ -484,8 +484,64 @@ struct CIVILIZATION_API FTileData
         CachedGoldYield = 0;
         CachedScienceYield = 0;
         CachedFaithYield = 0;
-        CachedMovementCost = 1.0f;
+        CachedMovementCost = 1;
         CachedDefenseBonus = 0;
+    }
+};
+
+// A* 알고리즘용 노드 구조체
+USTRUCT(BlueprintType)
+struct CIVILIZATION_API FAStarNode
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pathfinding")
+    FVector2D HexPosition = FVector2D::ZeroVector; // 육각형 좌표
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pathfinding")
+    int32 GCost = 0; // 시작점으로부터의 실제 비용
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pathfinding")
+    int32 HCost = 0; // 목표점까지의 휴리스틱 비용
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pathfinding")
+    int32 FCost = 0; // 총 비용 (G + H)
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pathfinding")
+    FVector2D ParentHex = FVector2D::ZeroVector; // 부모 노드 좌표
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pathfinding")
+    bool bIsWalkable = true; // 이동 가능한지 여부
+
+    FAStarNode()
+    {
+        HexPosition = FVector2D::ZeroVector;
+        GCost = 0;
+        HCost = 0;
+        FCost = 0;
+        ParentHex = FVector2D::ZeroVector;
+        bIsWalkable = true;
+    }
+
+    FAStarNode(FVector2D InHexPosition, int32 InGCost, int32 InHCost, FVector2D InParentHex, bool InIsWalkable)
+    {
+        HexPosition = InHexPosition;
+        GCost = InGCost;
+        HCost = InHCost;
+        FCost = GCost + HCost;
+        ParentHex = InParentHex;
+        bIsWalkable = InIsWalkable;
+    }
+
+    // 우선순위 큐를 위한 비교 연산자 (F값이 작을수록 우선순위 높음)
+    bool operator>(const FAStarNode& Other) const
+    {
+        return FCost > Other.FCost;
+    }
+
+    bool operator<(const FAStarNode& Other) const
+    {
+        return FCost < Other.FCost;
     }
 };
 
@@ -665,7 +721,7 @@ public:
     int32 GetTotalFaithYield() const; // 총 신앙 생산량 (기본 + 모디파이어)
 
     UFUNCTION(BlueprintCallable, Category = "Tile Modifier")
-    float GetTotalMovementCost() const; // 총 이동 비용 (기본 * 모디파이어 배수)
+    int32 GetTotalMovementCost() const; // 총 이동 비용 (기본 + 모디파이어)
 
     UFUNCTION(BlueprintCallable, Category = "Tile Modifier")
     int32 GetTotalDefenseBonus() const; // 총 방어 보너스 (기본 + 모디파이어)
@@ -710,7 +766,7 @@ public:
     int32 GetFaithYield() const { return m_TileData.CachedFaithYield; }
 
     UFUNCTION(BlueprintCallable, Category = "World Tile")
-    float GetMovementCost() const { return m_TileData.CachedMovementCost; }
+    int32 GetMovementCost() const { return m_TileData.CachedMovementCost; }
 
     UFUNCTION(BlueprintCallable, Category = "World Tile")
     int32 GetDefenseBonus() const { return m_TileData.CachedDefenseBonus; }

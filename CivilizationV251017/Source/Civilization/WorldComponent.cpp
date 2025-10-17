@@ -3,9 +3,6 @@
 #include "WorldComponent.h"
 #include "Engine/DataTable.h"
 
-/*
- *
-*/
 UWorldComponent::UWorldComponent()
 {
     PrimaryComponentTick.bCanEverTick = true;
@@ -837,33 +834,139 @@ int32 UWorldComponent::GetForestTileCount() const
 
 TArray<FVector2D> UWorldComponent::FindPath(FVector2D StartHex, FVector2D EndHex) const
 {
-    // 기본 경로 찾기 (나중에 A* 알고리즘으로 변경)
     TArray<FVector2D> Path;
-    
+
+    // 시작점과 끝점이 같으면 시작점만 반환
     if (StartHex == EndHex)
     {
         Path.Add(StartHex);
         return Path;
     }
-    
-    // 임시로 직선 경로 반환
-    int32 Distance = GetHexDistance(StartHex, EndHex);
-    for (int32 i = 0; i <= Distance; i++)
+
+    // 유효하지 않은 좌표 확인
+    if (!IsValidHexPosition(StartHex) || !IsValidHexPosition(EndHex))
     {
-        float T = (float)i / (float)Distance;
-        FVector2D InterpolatedHex = FVector2D(
-            FMath::Lerp(StartHex.X, EndHex.X, T),
-            FMath::Lerp(StartHex.Y, EndHex.Y, T)
-        );
-        Path.Add(InterpolatedHex);
+        return Path; // 빈 경로 반환
     }
+
+    // 목표점에 도달할 수 없는지 확인
+    if (!CanMoveToHex(EndHex))
+    {
+        return Path; // 빈 경로 반환
+    }
+
+    // A* 알고리즘 구현
+    TMap<FVector2D, FAStarNode> OpenSet; // 오픈 리스트 (우선순위 큐 대신 맵 사용)
+    TMap<FVector2D, FAStarNode> ClosedSet; // 클로즈드 리스트
+    TMap<FVector2D, FAStarNode> CameFrom; // 경로 추적용
+
+    // 시작 노드 초기화
+    int32 StartHeuristic = CalculateHeuristic(StartHex, EndHex);
+    FAStarNode StartNode(StartHex, 0, StartHeuristic, FVector2D::ZeroVector, true);
+    OpenSet.Add(StartHex, StartNode);
+
+    int32 IterationCount = 0;
+    while (OpenSet.Num() > 0)
+    {
+        // 오픈 리스트에서 F값이 가장 작은 노드 찾기
+        FVector2D CurrentHex = FVector2D::ZeroVector;
+        int32 LowestFCost = INT32_MAX;
+
+        for (const auto& Pair : OpenSet)
+        {
+            if (Pair.Value.FCost < LowestFCost)
+            {
+                LowestFCost = Pair.Value.FCost;
+                CurrentHex = Pair.Key;
+            }
+        }
+
+        // 현재 노드를 클로즈드 리스트로 이동
+        FAStarNode CurrentNode = OpenSet[CurrentHex];
+        OpenSet.Remove(CurrentHex);
+        ClosedSet.Add(CurrentHex, CurrentNode);
+
+        // 목표에 도달했는지 확인
+        if (CurrentHex == EndHex)
+        {
+            Path = ReconstructPath(CameFrom, CurrentHex);
+            break;
+        }
+
+        // 인접한 육각형들 확인
+        TArray<FVector2D> Neighbors = GetHexNeighbors(CurrentHex);
+
+        for (const FVector2D& NeighborHex : Neighbors)
+        {
+            // 유효하지 않은 위치이거나 층수 이동이 불가능한 곳은 건너뛰기
+            if (!IsValidHexPosition(NeighborHex) || !CanMoveBetweenHexes(CurrentHex, NeighborHex))
+            {
+                continue;
+            }
+
+            // 이미 클로즈드 리스트에 있으면 건너뛰기
+            if (ClosedSet.Contains(NeighborHex))
+            {
+                continue;
+            }
+
+            // 현재 노드에서 이웃까지의 이동 비용 계산
+            int32 MovementCost = GetMovementCostBetweenHexes(CurrentHex, NeighborHex);
+            int32 TentativeGCost = CurrentNode.GCost + MovementCost;
+
+            // 이웃이 오픈 리스트에 있는지 확인
+            bool bInOpenSet = OpenSet.Contains(NeighborHex);
+
+            // 더 나은 경로를 찾았거나 이웃이 오픈 리스트에 없으면
+            if (!bInOpenSet || TentativeGCost < OpenSet[NeighborHex].GCost)
+            {
+                // 이웃 노드 생성
+                int32 Heuristic = CalculateHeuristic(NeighborHex, EndHex);
+                FAStarNode NeighborNode(NeighborHex, TentativeGCost, Heuristic, CurrentHex, true);
+
+                // 오픈 리스트에 추가 또는 업데이트
+                OpenSet.Add(NeighborHex, NeighborNode);
+                CameFrom.Add(NeighborHex, NeighborNode);
+            }
+        }
+
+        IterationCount++;
+
+        // 너무 많은 반복을 방지 (안전장치)
+        if (IterationCount > 10000)
+        {
+            break;
+        }
+    }
+
     return Path;
 }
 
-TArray<FVector2D> UWorldComponent::FindPathWithMovementCost(FVector2D StartHex, FVector2D EndHex, float MaxMovementCost) const
+TArray<FVector2D> UWorldComponent::FindPathWithMovementCost(FVector2D StartHex, FVector2D EndHex, int32 MaxMovementCost) const
 {
-    // 이동 비용을 고려한 경로 찾기 (나중에 구현)
-    return FindPath(StartHex, EndHex);
+    // A* 알고리즘으로 경로를 찾은 후, 최대 이동 비용을 초과하는지 확인
+    TArray<FVector2D> Path = FindPath(StartHex, EndHex);
+
+    if (Path.Num() <= 1)
+    {
+        return Path; // 경로가 없거나 시작점만 있는 경우
+    }
+
+    // 경로의 총 이동 비용 계산
+    int32 TotalMovementCost = 0;
+    for (int32 i = 0; i < Path.Num() - 1; i++)
+    {
+        TotalMovementCost += GetMovementCostBetweenHexes(Path[i], Path[i + 1]);
+
+        // 최대 이동 비용을 초과하면 여기서 경로를 잘라냄
+        if (TotalMovementCost > MaxMovementCost)
+        {
+            Path.SetNum(i + 1); // 현재까지의 경로만 유지
+            break;
+        }
+    }
+
+    return Path;
 }
 
 bool UWorldComponent::CanMoveToHex(FVector2D HexPosition) const
@@ -873,8 +976,60 @@ bool UWorldComponent::CanMoveToHex(FVector2D HexPosition) const
     {
         return false;
     }
-    
+
     return Tile->IsPassable();
+}
+
+int32 UWorldComponent::CalculateHeuristic(FVector2D StartHex, FVector2D EndHex) const
+{
+    // 육각형 거리를 휴리스틱으로 사용 (일반적으로 1의 이동 비용을 가정)
+    int32 HexDistance = GetHexDistance(StartHex, EndHex);
+    return HexDistance;
+}
+
+TArray<FVector2D> UWorldComponent::ReconstructPath(const TMap<FVector2D, FAStarNode>& CameFrom, FVector2D Current) const
+{
+    TArray<FVector2D> Path;
+
+    // 시작점부터 목표점까지의 경로 재구성
+    TArray<FVector2D> ReversedPath;
+    ReversedPath.Add(Current);
+
+    // 목표점에서 시작점까지 역순으로 경로 수집
+    while (CameFrom.Contains(Current))
+    {
+        const FAStarNode& CurrentNode = CameFrom[Current];
+        Current = CurrentNode.ParentHex;
+
+        // 시작점에 도달했는지 확인 (부모가 (0,0)인 경우)
+        if (Current == FVector2D::ZeroVector)
+        {
+            ReversedPath.Add(FVector2D(0, 0)); // 시작점 추가
+            break;
+        }
+
+        ReversedPath.Add(Current);
+    }
+
+    // 역순으로 수집된 경로를 올바른 순서로 뒤집기
+    for (int32 i = ReversedPath.Num() - 1; i >= 0; i--)
+    {
+        Path.Add(ReversedPath[i]);
+    }
+
+    return Path;
+}
+
+int32 UWorldComponent::GetMovementCostBetweenHexes(FVector2D FromHex, FVector2D ToHex) const
+{
+    // 층수 이동 가능성 먼저 체크
+    if (!CanMoveBetweenHexes(FromHex, ToHex))
+    {
+        return INT32_MAX;
+    }
+    
+    // 층수를 고려한 이동비용 계산
+    return GetMovementCostBetweenHexesWithFloor(FromHex, ToHex);
 }
 
 // 내부 헬퍼 함수들
@@ -1372,17 +1527,17 @@ int32 UWorldComponent::CalculateBaseFaithYield(UWorldTile* Tile) const
     return TotalFaith;
 }
 
-float UWorldComponent::CalculateBaseMovementCost(UWorldTile* Tile) const
+int32 UWorldComponent::CalculateBaseMovementCost(UWorldTile* Tile) const
 {
     if (!Tile)
     {
-        return 1.0f;
+        return 1;
     }
     
-    float TotalMovementCost = 1.0f;
+    int32 TotalMovementCost = 1;
     FTileData TileData = Tile->GetTileData();
     
-    // 기후대 이동 비용 배수
+    // 기후대 이동 비용 증가량
     if (ClimateDataTable)
     {
         // Enum을 문자열로 변환해서 데이터테이블에서 찾기
@@ -1391,11 +1546,11 @@ float UWorldComponent::CalculateBaseMovementCost(UWorldTile* Tile) const
         FClimateData* ClimateData = ClimateDataTable->FindRow<FClimateData>(FName(*ClimateName), TEXT("ClimateData"));
         if (ClimateData)
         {
-            TotalMovementCost *= ClimateData->MovementCostMultiplier;
+            TotalMovementCost += ClimateData->MovementCost;
         }
     }
     
-    // 땅 타입 이동 비용 배수 (바다는 이동 불가이므로 배수 없음)
+    // 땅 타입 이동 비용 증가량 (바다는 이동 불가이므로 증가량 없음)
     if (TileData.TerrainType == ETerrainType::Land)
     {
         if (LandTypeDataTable)
@@ -1406,9 +1561,15 @@ float UWorldComponent::CalculateBaseMovementCost(UWorldTile* Tile) const
             FLandTypeData* LandData = LandTypeDataTable->FindRow<FLandTypeData>(FName(*LandName), TEXT("LandTypeData"));
             if (LandData)
             {
-                TotalMovementCost *= LandData->MovementCostMultiplier;
+                TotalMovementCost += LandData->MovementCost;
             }
         }
+    }
+    
+    // 숲이 있으면 이동 비용 +1
+    if (TileData.bHasForest)
+    {
+        TotalMovementCost += 1;
     }
     
     return TotalMovementCost;
@@ -1505,4 +1666,95 @@ void UWorldComponent::GeneratePangaeaTerrain()
             Tile->SetTerrainType(ETerrainType::Land);
         }
     }
+}
+
+// 층수 시스템 관련 함수들 구현
+int32 UWorldComponent::GetFloorLevel(ELandType LandType) const
+{
+    switch (LandType)
+    {
+    case ELandType::Plains:
+        return 1; // 1층
+    case ELandType::Hills:
+        return 2; // 2층
+    case ELandType::Mountains:
+        return 3; // 3층
+    default:
+        return 1; // 기본값은 1층
+    }
+}
+
+bool UWorldComponent::CanMoveBetweenHexes(FVector2D FromHex, FVector2D ToHex) const
+{
+    UWorldTile* FromTile = GetTileAtHex(FromHex);
+    UWorldTile* ToTile = GetTileAtHex(ToHex);
+    
+    if (!FromTile || !ToTile)
+    {
+        return false; // 타일이 없으면 이동 불가
+    }
+    
+    // 바다로는 이동 불가
+    if (ToTile->GetTerrainType() == ETerrainType::Ocean)
+    {
+        return false;
+    }
+    
+    // 바다에서 출발도 불가
+    if (FromTile->GetTerrainType() == ETerrainType::Ocean)
+    {
+        return false;
+    }
+    
+    // 층수 차이 계산
+    int32 FromFloor = GetFloorLevel(FromTile->GetLandType());
+    int32 ToFloor = GetFloorLevel(ToTile->GetLandType());
+    int32 FloorDifference = FMath::Abs(ToFloor - FromFloor);
+    
+    // 2층 이상 차이나면 이동 불가
+    if (FloorDifference >= 2)
+    {
+        return false;
+    }
+    
+    return true;
+}
+
+int32 UWorldComponent::GetMovementCostBetweenHexesWithFloor(FVector2D FromHex, FVector2D ToHex) const
+{
+    UWorldTile* FromTile = GetTileAtHex(FromHex);
+    UWorldTile* ToTile = GetTileAtHex(ToHex);
+    
+    if (!FromTile || !ToTile)
+    {
+        return INT32_MAX; // 타일이 없으면 이동 불가
+    }
+    
+    // 기본 이동 비용 (도착 타일의 총 이동 비용)
+    int32 BaseMovementCost = ToTile->GetTotalMovementCost();
+    
+    // 층수 차이 계산
+    int32 FromFloor = GetFloorLevel(FromTile->GetLandType());
+    int32 ToFloor = GetFloorLevel(ToTile->GetLandType());
+    int32 FloorDifference = ToFloor - FromFloor;
+    
+    int32 TotalMovementCost = BaseMovementCost;
+    
+    if (FloorDifference > 0)
+    {
+        // 올라가는 경우: 기본비용 + 층수차이
+        TotalMovementCost += FloorDifference;
+    }
+    else if (FloorDifference < 0)
+    {
+        // 내려가는 경우: 기본비용만 (추가 비용 없음)
+        TotalMovementCost = BaseMovementCost;
+    }
+    else
+    {
+        // 같은 층: 기본비용만
+        TotalMovementCost = BaseMovementCost;
+    }
+    
+    return TotalMovementCost;
 }

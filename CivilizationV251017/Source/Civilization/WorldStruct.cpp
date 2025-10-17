@@ -224,18 +224,18 @@ int32 UWorldTile::GetTotalFaithYield() const
 }
 
 
-float UWorldTile::GetTotalMovementCost() const
+int32 UWorldTile::GetTotalMovementCost() const
 {
-    float BaseMovementCost = m_TileData.CachedMovementCost;
+    int32 BaseMovementCost = m_TileData.CachedMovementCost;
     
-    // 모든 모디파이어의 이동 비용 배수를 곱함
-    float TotalMultiplier = 1.0f;
+    // 모든 모디파이어의 이동 비용 증가량을 더함
+    int32 TotalMovementCost = BaseMovementCost;
     for (const FTileModifier& Modifier : m_TileModifiers)
     {
-        TotalMultiplier *= Modifier.MovementCostMultiplier;
+        TotalMovementCost += Modifier.MovementCost;
     }
     
-    return BaseMovementCost * TotalMultiplier;
+    return TotalMovementCost;
 }
 
 int32 UWorldTile::GetTotalDefenseBonus() const

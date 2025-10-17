@@ -39,7 +39,10 @@ void ASuperGameController::BeginPlay()
 		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>())
 		{
 			Subsystem->ClearAllMappings();
-			Subsystem->AddMappingContext(IMC_InGame, 0);
+			if (IMC_InGame)
+			{
+				Subsystem->AddMappingContext(IMC_InGame, 0);
+			}
 		}
 	}
 
@@ -64,12 +67,21 @@ void ASuperGameController::SetupInputComponent()
 	// Enhanced Input Component로 캐스팅
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(InputComponent))
 	{
-		// 마우스 입력 바인딩
-		EnhancedInputComponent->BindAction(IA_LMB, ETriggerEvent::Started, this, &ASuperGameController::OnLMB_Pressed);
-		EnhancedInputComponent->BindAction(IA_LMB, ETriggerEvent::Completed, this, &ASuperGameController::OnLMB_Released);
-		EnhancedInputComponent->BindAction(IA_RMB, ETriggerEvent::Started, this, &ASuperGameController::OnRMB_Pressed);
-		EnhancedInputComponent->BindAction(IA_RMB, ETriggerEvent::Completed, this, &ASuperGameController::OnRMB_Released);
-		EnhancedInputComponent->BindAction(IA_Wheel, ETriggerEvent::Triggered, this, &ASuperGameController::OnWheel_Triggered);
+		// 마우스 입력 바인딩 (null 체크 추가)
+		if (IA_LMB)
+		{
+			EnhancedInputComponent->BindAction(IA_LMB, ETriggerEvent::Started, this, &ASuperGameController::OnLMB_Pressed);
+			EnhancedInputComponent->BindAction(IA_LMB, ETriggerEvent::Completed, this, &ASuperGameController::OnLMB_Released);
+		}
+		if (IA_RMB)
+		{
+			EnhancedInputComponent->BindAction(IA_RMB, ETriggerEvent::Started, this, &ASuperGameController::OnRMB_Pressed);
+			EnhancedInputComponent->BindAction(IA_RMB, ETriggerEvent::Completed, this, &ASuperGameController::OnRMB_Released);
+		}
+		if (IA_Wheel)
+		{
+			EnhancedInputComponent->BindAction(IA_Wheel, ETriggerEvent::Triggered, this, &ASuperGameController::OnWheel_Triggered);
+		}
 	}
 }
 
