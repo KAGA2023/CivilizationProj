@@ -44,9 +44,12 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Data")
     TMap<FVector2D, UWorldTile*> HexTiles; // 육각형 좌표 → 타일 매핑
 
-    // 선택된 타일
+    // 2단계 선택 시스템
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Data")
-    UWorldTile* SelectedTile = nullptr; // 현재 선택된 타일 (단일 선택)
+    UWorldTile* FirstSelectedTile = nullptr; // 첫 번째 선택된 타일
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Data")
+    UWorldTile* SecondSelectedTile = nullptr; // 두 번째 선택된 타일
 
     // 월드 생성 상태
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World State")
@@ -119,15 +122,35 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Hex Utilities")
     bool IsValidHexPosition(FVector2D HexPosition) const; // 유효한 육각형 좌표인지 확인
 
-    // 타일 선택 및 탐험
-    UFUNCTION(BlueprintCallable, Category = "Tile Interaction")
-    void SelectTile(UWorldTile* Tile); // 타일 선택
+    // 2단계 타일 선택 시스템  //나중에 반환형 바꾸는것도 고려
+    UFUNCTION(BlueprintCallable, Category = "Tile Selection")
+    void HandleTwoTileClick(UWorldTile* ClickedTile); // 2단계 타일 클릭 처리
 
-    UFUNCTION(BlueprintCallable, Category = "Tile Interaction")
-    void DeselectTile(); // 선택된 타일 해제
+    // 1단계 타일 선택 시스템  //나중에 반환형 바꾸는것도 고려
+    UFUNCTION(BlueprintCallable, Category = "Tile Selection")
+    void HandleOneTileClick(UWorldTile* ClickedTile); // 1단계 타일 클릭 처리
 
-    UFUNCTION(BlueprintCallable, Category = "Tile Interaction")
-    UWorldTile* GetSelectedTile() const { return SelectedTile; } // 선택된 타일 가져오기
+    UFUNCTION(BlueprintCallable, Category = "Tile Selection")
+    void ClearSelection(); // 선택 초기화
+
+    // 타일 호버 시스템
+    UFUNCTION(BlueprintCallable, Category = "Tile Hover")
+    void HandleTileHoverBegin(UWorldTile* HoveredTile); // 타일 호버 시작 처리
+
+    UFUNCTION(BlueprintCallable, Category = "Tile Hover")
+    void HandleTileHoverEnd(UWorldTile* HoveredTile); // 타일 호버 종료 처리
+
+    UFUNCTION(BlueprintCallable, Category = "Tile Selection")
+    UWorldTile* GetFirstSelectedTile() const { return FirstSelectedTile; } // 첫 번째 선택된 타일 가져오기
+
+    UFUNCTION(BlueprintCallable, Category = "Tile Selection")
+    UWorldTile* GetSecondSelectedTile() const { return SecondSelectedTile; } // 두 번째 선택된 타일 가져오기
+
+    UFUNCTION(BlueprintCallable, Category = "Tile Selection")
+    bool HasFirstSelection() const { return FirstSelectedTile != nullptr; } // 첫 번째 선택 여부
+
+    UFUNCTION(BlueprintCallable, Category = "Tile Selection")
+    bool HasSecondSelection() const { return SecondSelectedTile != nullptr; } // 두 번째 선택 여부
 
     // 월드 설정 관리
     UFUNCTION(BlueprintCallable, Category = "World Settings")

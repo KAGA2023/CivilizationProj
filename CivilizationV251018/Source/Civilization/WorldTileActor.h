@@ -53,6 +53,17 @@ public:
 	UFUNCTION()
 	void OnTileClicked(UPrimitiveComponent* TouchedComponent, FKey ButtonPressed);
 
+	// 호버 이벤트
+	UFUNCTION()
+	void OnBeginCursorOver(UPrimitiveComponent* TouchedComponent);
+
+	UFUNCTION()
+	void OnEndCursorOver(UPrimitiveComponent* TouchedComponent);
+
+	// WorldComponent 접근을 위한 헬퍼 함수
+	UFUNCTION(BlueprintCallable, Category = "Tile")
+	class UWorldComponent* GetWorldComponent() const;
+
 	// 타일 선택/해제
 	UFUNCTION(BlueprintCallable, Category = "Tile")
 	void SetSelected(bool bSelected);

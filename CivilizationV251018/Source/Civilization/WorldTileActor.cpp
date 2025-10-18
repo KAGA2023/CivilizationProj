@@ -30,6 +30,10 @@ AWorldTileActor::AWorldTileActor()
 	// 클릭 이벤트 바인딩
 	TileMesh->OnClicked.AddDynamic(this, &AWorldTileActor::OnTileClicked);
 
+	// 호버 이벤트 바인딩
+	TileMesh->OnBeginCursorOver.AddDynamic(this, &AWorldTileActor::OnBeginCursorOver);
+	TileMesh->OnEndCursorOver.AddDynamic(this, &AWorldTileActor::OnEndCursorOver);
+
 	// 숲 메시 컴포넌트 생성 (루트 씬 컴포넌트에 직접 부착)
 	ForestMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ForestMesh"));
 	ForestMesh->SetupAttachment(RootSceneComponent);
@@ -366,81 +370,48 @@ UStaticMesh* AWorldTileActor::GetClimateForestMesh(EClimateType Climate) const
 	return nullptr;
 }
 
+UWorldComponent* AWorldTileActor::GetWorldComponent() const
+{
+	// GameInstance에서 WorldComponent 가져오기
+	if (UWorld* World = GetWorld())
+	{
+		if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
+		{
+			return SuperGameInst->GetGeneratedWorldComponent();
+		}
+	}
+	
+	return nullptr;
+}
+
 void AWorldTileActor::OnTileClicked(UPrimitiveComponent* TouchedComponent, FKey ButtonPressed)
 {
 	// 좌클릭만 처리
 	if (ButtonPressed == EKeys::LeftMouseButton)
 	{
-		// 타일 좌표 로그 출력
-		if (TileData)
+		// WorldComponent에 클릭 전달 (기본적으로 2단계 선택 사용)
+		if (UWorldComponent* WorldComp = GetWorldComponent())
 		{
-			FVector2D HexPos = TileData->GetGridPosition();
-			FVector WorldPos = TileData->GetWorldPosition();
-			
-			UE_LOG(LogTemp, Warning, TEXT("===== 타일 클릭 ====="));
-			UE_LOG(LogTemp, Warning, TEXT("육각형 좌표: Q=%d, R=%d"), (int32)HexPos.X, (int32)HexPos.Y);
-			UE_LOG(LogTemp, Warning, TEXT("월드 좌표: X=%.1f, Y=%.1f, Z=%.1f"), WorldPos.X, WorldPos.Y, WorldPos.Z);
-			
-			// 바다 타일인지 확인
-			if (TileData->GetTerrainType() == ETerrainType::Ocean)
-			{
-				UE_LOG(LogTemp, Warning, TEXT("타입: 바다"));
-				UE_LOG(LogTemp, Warning, TEXT("===================="));
-			}
-			else
-			{
-				// 육지 타일의 경우 기존 상세 정보 출력
-				FString ClimateName = TileData->GetClimateTypeName();
-				FString LandTypeName = TileData->GetLandTypeName();
-				
-				UE_LOG(LogTemp, Warning, TEXT("기후대: %s"), *ClimateName);
-				UE_LOG(LogTemp, Warning, TEXT("지형: %s"), *LandTypeName);
-				
-				// 자원 정보 출력
-				if (TileData->HasResource())
-				{
-					FString ResourceName;
-					switch (TileData->GetResourceCategory())
-					{
-					case EResourceCategory::Bonus:
-						ResourceName = TileData->GetBonusResourceName();
-						UE_LOG(LogTemp, Warning, TEXT("보너스 자원: %s"), *ResourceName);
-						break;
-					case EResourceCategory::Strategic:
-						ResourceName = TileData->GetStrategicResourceName();
-						UE_LOG(LogTemp, Warning, TEXT("전략 자원: %s"), *ResourceName);
-						break;
-					case EResourceCategory::Luxury:
-						ResourceName = TileData->GetLuxuryResourceName();
-						UE_LOG(LogTemp, Warning, TEXT("사치 자원: %s"), *ResourceName);
-						break;
-					}
-				}
-				else
-				{
-					UE_LOG(LogTemp, Warning, TEXT("자원: 없음"));
-				}
-				
-				// 숲 정보 출력
-				if (TileData->HasForest())
-				{
-					UE_LOG(LogTemp, Warning, TEXT("숲: 있음"));
-				}
-				else
-				{
-					UE_LOG(LogTemp, Warning, TEXT("숲: 없음"));
-				}
-				
-				// 이동 비용 정보 출력
-				int32 MovementCost = TileData->GetTotalMovementCost();
-				UE_LOG(LogTemp, Warning, TEXT("이동 비용: %d"), MovementCost);
-				
-				UE_LOG(LogTemp, Warning, TEXT("===================="));
-			}
+			WorldComp->HandleTwoTileClick(TileData);
 		}
-		
-		// 타일 선택
-		SetSelected(!bIsSelected);
+	}
+}
+
+void AWorldTileActor::OnBeginCursorOver(UPrimitiveComponent* TouchedComponent)
+{
+	// WorldComponent에 호버 시작 전달
+	if (UWorldComponent* WorldComp = GetWorldComponent())
+	{
+		WorldComp->HandleTileHoverBegin(TileData);
+	}
+}
+
+void AWorldTileActor::OnEndCursorOver(UPrimitiveComponent* TouchedComponent)
+{
+	// WorldComponent에 호버 종료 전달
+	if (UWorldComponent* WorldComp = GetWorldComponent())
+	{
+		WorldComp->HandleTileHoverEnd(TileData);
 	}
 }
 

@@ -72,7 +72,8 @@ void UWorldComponent::ClearWorld()
     }
     
     HexTiles.Empty();
-    SelectedTile = nullptr;
+    FirstSelectedTile = nullptr;
+    SecondSelectedTile = nullptr;
     bIsWorldGenerated = false;
 }
 
@@ -112,9 +113,13 @@ bool UWorldComponent::RemoveTileAtHex(FVector2D HexPosition)
     if (UWorldTile* Tile = GetTileAtHex(HexPosition))
     {
         HexTiles.Remove(HexPosition);
-        if (SelectedTile == Tile)
+        if (FirstSelectedTile == Tile)
         {
-            SelectedTile = nullptr;
+            FirstSelectedTile = nullptr;
+        }
+        if (SecondSelectedTile == Tile)
+        {
+            SecondSelectedTile = nullptr;
         }
         DestroyTile(Tile);
         return true;
@@ -229,33 +234,108 @@ bool UWorldComponent::IsValidHexPosition(FVector2D HexPosition) const
     return Distance <= WorldConfig.WorldRadius;
 }
 
-void UWorldComponent::SelectTile(UWorldTile* Tile)
+void UWorldComponent::HandleTwoTileClick(UWorldTile* ClickedTile)  //나중에 반환형 바꾸는것도 고려
 {
-    if (!Tile)
+    if (!ClickedTile)
     {
         return;
     }
     
-    // 기존 선택 해제
-    if (SelectedTile)
+    FVector2D HexPos = ClickedTile->GetGridPosition();
+    UE_LOG(LogTemp, Warning, TEXT("2단계 선택 클릭: Q=%d, R=%d"), (int32)HexPos.X, (int32)HexPos.Y);
+    
+    // 첫 번째 선택이 없으면 첫 번째로 설정
+    if (!HasFirstSelection())
     {
-        SelectedTile->SetSelected(false);
+        FirstSelectedTile = ClickedTile;
+        FirstSelectedTile->SetSelected(true);
+        
+        UE_LOG(LogTemp, Warning, TEXT("첫 번째 타일 선택됨"));
+        
+        // 선택 이벤트 발생
+        NotifyTileSelected(FirstSelectedTile);
     }
-    
-    // 새 타일 선택
-    SelectedTile = Tile;
-    Tile->SetSelected(true);
-    
-    NotifyTileSelected(Tile);
+    // 첫 번째 선택이 있고 두 번째 선택이 없으면 두 번째로 설정
+    else if (!HasSecondSelection())
+    {
+        SecondSelectedTile = ClickedTile;
+        SecondSelectedTile->SetSelected(true);
+        
+        UE_LOG(LogTemp, Warning, TEXT("두 번째 타일 선택됨 - 액션 실행"));
+        
+        // 선택 이벤트 발생
+        NotifyTileSelected(SecondSelectedTile);
+        
+        // 선택 초기화 (액션 완료 후)
+        ClearSelection();
+    }
 }
 
-void UWorldComponent::DeselectTile()
+void UWorldComponent::HandleOneTileClick(UWorldTile* ClickedTile)  //나중에 반환형 바꾸는것도 고려
 {
-    if (SelectedTile)
+    if (!ClickedTile)
     {
-        SelectedTile->SetSelected(false);
-        SelectedTile = nullptr;
+        return;
     }
+    
+    FVector2D HexPos = ClickedTile->GetGridPosition();
+    UE_LOG(LogTemp, Warning, TEXT("1단계 선택 클릭: Q=%d, R=%d"), (int32)HexPos.X, (int32)HexPos.Y);
+    
+    // 기존 선택 해제
+    ClearSelection();
+    
+    // 새로운 타일 선택
+    FirstSelectedTile = ClickedTile;
+    FirstSelectedTile->SetSelected(true);
+    
+    UE_LOG(LogTemp, Warning, TEXT("1단계 타일 선택됨 - 즉시 액션 실행"));
+    
+    // 선택 이벤트 발생
+    NotifyTileSelected(FirstSelectedTile);
+}
+
+void UWorldComponent::ClearSelection()
+{
+    // 기존 선택 해제
+    if (FirstSelectedTile)
+    {
+        FirstSelectedTile->SetSelected(false);
+        FirstSelectedTile = nullptr;
+    }
+    
+    if (SecondSelectedTile)
+    {
+        SecondSelectedTile->SetSelected(false);
+        SecondSelectedTile = nullptr;
+    }
+}
+
+void UWorldComponent::HandleTileHoverBegin(UWorldTile* HoveredTile)
+{
+    if (!HoveredTile)
+    {
+        return;
+    }
+    
+    // 호버된 타일 정보 로그 출력 (임시)
+    FVector2D HexPos = HoveredTile->GetGridPosition();
+    FString ClimateName = HoveredTile->GetClimateTypeName();
+    FString LandTypeName = HoveredTile->GetLandTypeName();
+    
+    UE_LOG(LogTemp, Warning, TEXT("호버 시작: Q=%d, R=%d - %s %s"), 
+           (int32)HexPos.X, (int32)HexPos.Y, *ClimateName, *LandTypeName);
+}
+
+void UWorldComponent::HandleTileHoverEnd(UWorldTile* HoveredTile)
+{
+    if (!HoveredTile)
+    {
+        return;
+    }
+    
+    // 호버 종료 로그 출력 (임시)
+    FVector2D HexPos = HoveredTile->GetGridPosition();
+    UE_LOG(LogTemp, Warning, TEXT("호버 종료: Q=%d, R=%d"), (int32)HexPos.X, (int32)HexPos.Y);
 }
 
 void UWorldComponent::SetWorldConfig(const FWorldConfig& NewSettings)
