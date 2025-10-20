@@ -311,9 +311,6 @@ struct CIVILIZATION_API FLuxuryResourceData : public FTableRowBase
     int32 FaithYield = 0; // 신앙 생산량
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Luxury Resource")
-    int32 HappinessBonus = 0; // 행복도 보너스
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Luxury Resource")
     TArray<EClimateType> CompatibleClimates; // 호환되는 기후대들
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Luxury Resource")
@@ -336,7 +333,6 @@ struct CIVILIZATION_API FLuxuryResourceData : public FTableRowBase
         GoldYield = 0;
         ScienceYield = 0;
         FaithYield = 0;
-        HappinessBonus = 0;
         CompatibleClimates.Empty();
         CompatibleLandTypes.Empty();
         bRequiresForest = false;
