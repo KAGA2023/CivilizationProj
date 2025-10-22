@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "Engine/DataTable.h"
 #include "../WorldStruct.h"
-#include "StatusStruct.generated.h"
+#include "UnitStatusStruct.generated.h"
 
 // 유닛 클래스 열거형
 UENUM(BlueprintType)
@@ -30,34 +30,34 @@ struct FUnitStatModifier
     GENERATED_BODY()
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    int32 Health = 0;                     // 체력
+    int32 AddHealth = 0;                     // 체력
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    int32 AttackStrength = 0;             // 공격시 공격력
+    int32 AddAttackStrength = 0;             // 공격시 공격력
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    int32 DefenseStrength = 0;            // 반격시 공격력
+    int32 AddDefenseStrength = 0;            // 반격시 공격력
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    int32 MovementPoints = 0;             // 이동력
+    int32 AddMovementPoints = 0;             // 이동력
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    int32 SightRange = 0;                 // 시야 범위
+    int32 AddSightRange = 0;                 // 시야 범위
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    int32 Range = 0;                      // 사거리
+    int32 AddRange = 0;                      // 사거리
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    int32 ProductionCost = 0;              // 생산 비용 (음수로 할인)
+    int32 AddProductionCost = 0;              // 생산 비용 (음수로 할인)
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    int32 GoldCost = 0;                   // 골드 비용 (음수로 할인)
+    int32 AddGoldCost = 0;                   // 골드 비용 (음수로 할인)
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    int32 FaithCost = 0;                  // 신앙 비용 (음수로 할인)
+    int32 AddFaithCost = 0;                  // 신앙 비용 (음수로 할인)
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    int32 MaintenanceCost = 0;            // 턴당 골드 유지비 (음수로 할인)
+    int32 AddMaintenanceCost = 0;            // 턴당 골드 유지비 (음수로 할인)
 
     // 연산자 오버로드
     bool operator==(const FUnitStatModifier& Other) const;
@@ -75,12 +75,12 @@ struct FUnitBaseStat : public FTableRowBase
     GENERATED_BODY()
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    FName UnitID = NAME_None;                    // 유닛 고유 ID
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
     EUnitClass UnitClass = EUnitClass::None;     // 유닛 클래스
 
     // 기본 전투 스테이터스
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    int32 MaxHealth = 0;                      // 최대 체력
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     int32 AttackStrength = 0;                 // 공격시 공격력
 
@@ -112,7 +112,7 @@ struct FUnitBaseStat : public FTableRowBase
 
     // 특수 능력
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    bool CanCaptureCity = false;               // 도시 점령 가능
+    bool CanAttack = false;                    // 공격 가능 (도시 점령도 포함)
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     bool CanBuildBuildings = false;            // 건물 건설 가능
@@ -142,19 +142,13 @@ struct FUnitCurrentStat
     GENERATED_BODY()
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    int32 CurrentMovementPoints = 0;           // 현재 이동력
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
     int32 RemainingMovementPoints = 0;         // 남은 이동력
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     bool HasAttacked = false;                  // 이번 턴에 공격했는지
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    bool HasMoved = false;                     // 이번 턴에 이동했는지
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    bool IsFortified = false;                  // 요새화 상태
+    bool IsWait = false;                       // 대기 상태
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     bool IsAlert = false;                      // 경계 상태
@@ -163,31 +157,7 @@ struct FUnitCurrentStat
     bool IsSleep = false;                      // 휴면 상태
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    int32 FortificationTurns = 0;             // 요새화 턴 수
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float HealthPercentage = 100.f;            // 체력 비율 (0-100)
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    TArray<FName> ActivePromotions;            // 활성 승급 목록
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    TArray<FName> ActiveAbilities;            // 활성 능력 목록
-
-    // 유틸리티 함수들
-    void ResetTurn();                          // 턴 초기화
-    void ConsumeMovement(int32 Amount);        // 이동력 소모
-    bool CanMove() const;                     // 이동 가능 여부
-    bool CanAttack() const;                   // 공격 가능 여부
-    void SetFortified(bool bFortified);       // 요새화 설정
-    void SetAlert(bool bAlert);               // 경계 설정
-    void SetSleep(bool bSleep);               // 휴면 설정
-    void AddPromotion(FName PromotionName);   // 승급 추가
-    void RemovePromotion(FName PromotionName); // 승급 제거
-    bool HasPromotion(FName PromotionName) const; // 승급 보유 여부
-    void AddAbility(FName AbilityName);       // 능력 추가
-    void RemoveAbility(FName AbilityName);    // 능력 제거
-    bool HasAbility(FName AbilityName) const; // 능력 보유 여부
+    int32 RemainingHealth = 0;                 // 남은 체력
 };
 
 // 최종 스테이터스 구조체 (계산된 값들)
