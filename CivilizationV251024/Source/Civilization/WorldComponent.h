@@ -40,20 +40,11 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data Tables")
     UDataTable* LuxuryResourceDataTable = nullptr; // 사치 자원 데이터테이블
 
-    // 유닛 위치 추적
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Data")
-    TMap<FVector2D, class AUnitCharacterBase*> HexToUnitMap; // 육각형 좌표 → 유닛 매핑
 
     // 타일 배열 (육각형 맵)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Data")
     TMap<FVector2D, UWorldTile*> HexTiles; // 육각형 좌표 → 타일 매핑
 
-    // 2단계 선택 시스템
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Data")
-    UWorldTile* FirstSelectedTile = nullptr; // 첫 번째 선택된 타일
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Data")
-    UWorldTile* SecondSelectedTile = nullptr; // 두 번째 선택된 타일
 
     // 월드 생성 상태
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World State")
@@ -87,19 +78,6 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "World Generation")
     bool IsWorldGenerated() const { return bIsWorldGenerated; } // 월드 생성 완료 여부
-
-    // 유닛 관리 함수들
-    UFUNCTION(BlueprintCallable, Category = "Unit Management")
-    class AUnitCharacterBase* GetUnitAtHex(FVector2D HexPosition) const; // 육각형 좌표의 유닛 가져오기
-
-    UFUNCTION(BlueprintCallable, Category = "Unit Management")
-    bool SetUnitAtHex(FVector2D HexPosition, class AUnitCharacterBase* Unit); // 육각형 좌표에 유닛 설정
-
-    UFUNCTION(BlueprintCallable, Category = "Unit Management")
-    void RemoveUnitFromHex(FVector2D HexPosition); // 육각형 좌표에서 유닛 제거
-
-    UFUNCTION(BlueprintCallable, Category = "Unit Management")
-    bool CanPlaceUnitAtHex(FVector2D HexPosition) const; // 해당 위치에 유닛 배치 가능 여부
 
     // 타일 접근 및 관리
     UFUNCTION(BlueprintCallable, Category = "Tile Management")
@@ -139,35 +117,12 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Hex Utilities")
     bool IsValidHexPosition(FVector2D HexPosition) const; // 유효한 육각형 좌표인지 확인
 
-    // 2단계 타일 선택 시스템  //나중에 반환형 바꾸는것도 고려
-    UFUNCTION(BlueprintCallable, Category = "Tile Selection")
-    void HandleTwoTileClick(UWorldTile* ClickedTile); // 2단계 타일 클릭 처리
-
-    // 1단계 타일 선택 시스템  //나중에 반환형 바꾸는것도 고려
-    UFUNCTION(BlueprintCallable, Category = "Tile Selection")
-    void HandleOneTileClick(UWorldTile* ClickedTile); // 1단계 타일 클릭 처리
-
-    UFUNCTION(BlueprintCallable, Category = "Tile Selection")
-    void ClearSelection(); // 선택 초기화
-
     // 타일 호버 시스템
     UFUNCTION(BlueprintCallable, Category = "Tile Hover")
     void HandleTileHoverBegin(UWorldTile* HoveredTile); // 타일 호버 시작 처리
 
     UFUNCTION(BlueprintCallable, Category = "Tile Hover")
     void HandleTileHoverEnd(UWorldTile* HoveredTile); // 타일 호버 종료 처리
-
-    UFUNCTION(BlueprintCallable, Category = "Tile Selection")
-    UWorldTile* GetFirstSelectedTile() const { return FirstSelectedTile; } // 첫 번째 선택된 타일 가져오기
-
-    UFUNCTION(BlueprintCallable, Category = "Tile Selection")
-    UWorldTile* GetSecondSelectedTile() const { return SecondSelectedTile; } // 두 번째 선택된 타일 가져오기
-
-    UFUNCTION(BlueprintCallable, Category = "Tile Selection")
-    bool HasFirstSelection() const { return FirstSelectedTile != nullptr; } // 첫 번째 선택 여부
-
-    UFUNCTION(BlueprintCallable, Category = "Tile Selection")
-    bool HasSecondSelection() const { return SecondSelectedTile != nullptr; } // 두 번째 선택 여부
 
     // 월드 설정 관리
     UFUNCTION(BlueprintCallable, Category = "World Settings")
@@ -291,35 +246,6 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "World Statistics")
     int32 GetForestTileCount() const; // 숲이 있는 타일 수
-
-    // 경로 찾기 및 이동
-    UFUNCTION(BlueprintCallable, Category = "Pathfinding")
-    TArray<FVector2D> FindPath(FVector2D StartHex, FVector2D EndHex) const; // A* 알고리즘을 사용한 최적 경로 찾기
-
-    UFUNCTION(BlueprintCallable, Category = "Pathfinding")
-    TArray<FVector2D> FindPathWithMovementCost(FVector2D StartHex, FVector2D EndHex, int32 MaxMovementCost) const; // 최대 이동 비용 제한이 있는 경로 찾기
-
-    UFUNCTION(BlueprintCallable, Category = "Pathfinding")
-    bool CanMoveToHex(FVector2D HexPosition) const; // 해당 육각형으로 이동 가능한지 확인
-
-    UFUNCTION(BlueprintCallable, Category = "Pathfinding")
-    int32 CalculateHeuristic(FVector2D StartHex, FVector2D EndHex) const; // 휴리스틱 함수 (육각형 거리 기반)
-
-    UFUNCTION(BlueprintCallable, Category = "Pathfinding")
-    TArray<FVector2D> ReconstructPath(const TMap<FVector2D, FAStarNode>& CameFrom, FVector2D Current) const; // 경로 재구성
-
-    UFUNCTION(BlueprintCallable, Category = "Pathfinding")
-    int32 GetMovementCostBetweenHexes(FVector2D FromHex, FVector2D ToHex) const; // 두 육각형 간의 이동 비용 계산
-
-    // 층수 시스템 관련 함수들
-    UFUNCTION(BlueprintCallable, Category = "Floor System")
-    int32 GetFloorLevel(ELandType LandType) const; // 지형 타입을 층수로 변환
-
-    UFUNCTION(BlueprintCallable, Category = "Floor System")
-    bool CanMoveBetweenHexes(FVector2D FromHex, FVector2D ToHex) const; // 두 육각형 간 층수 이동 가능성 체크
-
-    UFUNCTION(BlueprintCallable, Category = "Floor System")
-    int32 GetMovementCostBetweenHexesWithFloor(FVector2D FromHex, FVector2D ToHex) const; // 층수를 고려한 이동 비용 계산
 
 private:
     // 내부 헬퍼 함수들

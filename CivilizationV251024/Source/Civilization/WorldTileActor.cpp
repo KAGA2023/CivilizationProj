@@ -8,6 +8,7 @@
 #include "UObject/ConstructorHelpers.h"
 #include "WorldComponent.h"
 #include "SuperGameInstance.h"
+#include "Unit/UnitManager.h"
 
 AWorldTileActor::AWorldTileActor()
 {
@@ -389,10 +390,16 @@ void AWorldTileActor::OnTileClicked(UPrimitiveComponent* TouchedComponent, FKey 
 	// 좌클릭만 처리
 	if (ButtonPressed == EKeys::LeftMouseButton)
 	{
-		// WorldComponent에 클릭 전달 (기본적으로 2단계 선택 사용)
-		if (UWorldComponent* WorldComp = GetWorldComponent())
+		// UnitManager에 클릭 전달 (유닛 이동용 2단계 선택)
+		if (UWorld* World = GetWorld())
 		{
-			WorldComp->HandleTwoTileClick(TileData);
+			if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
+			{
+				if (UUnitManager* UnitManager = SuperGameInst->GetUnitManager())
+				{
+					UnitManager->HandleTwoTileClick(TileData);
+				}
+			}
 		}
 	}
 }
