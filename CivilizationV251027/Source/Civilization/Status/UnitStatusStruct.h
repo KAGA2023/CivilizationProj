@@ -142,6 +142,9 @@ struct FUnitCurrentStat
     GENERATED_BODY()
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    int32 RemainingHealth = 0;                 // 남은 체력
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
     int32 RemainingMovementPoints = 0;         // 남은 이동력
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -155,9 +158,6 @@ struct FUnitCurrentStat
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     bool IsSleep = false;                      // 휴면 상태
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    int32 RemainingHealth = 0;                 // 남은 체력
 };
 
 // 최종 스테이터스 구조체 (계산된 값들)

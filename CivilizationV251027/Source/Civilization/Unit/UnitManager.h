@@ -10,6 +10,62 @@ class UWorldComponent;
 class AUnitCharacterBase;
 class USuperGameInstance;
 
+// A* 알고리즘용 노드 구조체
+USTRUCT(BlueprintType)
+struct CIVILIZATION_API FAStarNode
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pathfinding")
+    FVector2D HexPosition = FVector2D::ZeroVector; // 육각형 좌표
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pathfinding")
+    int32 GCost = 0; // 시작점으로부터의 실제 비용
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pathfinding")
+    int32 HCost = 0; // 목표점까지의 휴리스틱 비용
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pathfinding")
+    int32 FCost = 0; // 총 비용 (G + H)
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pathfinding")
+    FVector2D ParentHex = FVector2D::ZeroVector; // 부모 노드 좌표
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pathfinding")
+    bool bIsWalkable = true; // 이동 가능한지 여부
+
+    FAStarNode()
+    {
+        HexPosition = FVector2D::ZeroVector;
+        GCost = 0;
+        HCost = 0;
+        FCost = 0;
+        ParentHex = FVector2D::ZeroVector;
+        bIsWalkable = true;
+    }
+
+    FAStarNode(FVector2D InHexPosition, int32 InGCost, int32 InHCost, FVector2D InParentHex, bool InIsWalkable)
+    {
+        HexPosition = InHexPosition;
+        GCost = InGCost;
+        HCost = InHCost;
+        FCost = GCost + HCost;
+        ParentHex = InParentHex;
+        bIsWalkable = InIsWalkable;
+    }
+
+    // 우선순위 큐를 위한 비교 연산자 (F값이 작을수록 우선순위 높음)
+    bool operator>(const FAStarNode& Other) const
+    {
+        return FCost > Other.FCost;
+    }
+
+    bool operator<(const FAStarNode& Other) const
+    {
+        return FCost < Other.FCost;
+    }
+};
+
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class CIVILIZATION_API UUnitManager : public UActorComponent
 {
@@ -57,10 +113,7 @@ public:
 
     // 유닛 이동력 관리
     UFUNCTION(BlueprintCallable, Category = "Unit Management")
-    int32 GetUnitMovementCost(class AUnitCharacterBase* Unit) const; // 유닛의 이동력 가져오기
-
-    UFUNCTION(BlueprintCallable, Category = "Unit Management")
-    void SetUnitMovementCost(class AUnitCharacterBase* Unit, int32 MovementCost); // 유닛의 이동력 설정
+    int32 GetUnitRemainingMovement(class AUnitCharacterBase* Unit) const; // 유닛의 남은 이동력 가져오기
 
     // 유닛 선택 및 이동 시스템
     UFUNCTION(BlueprintCallable, Category = "Unit Selection")

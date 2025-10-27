@@ -30,14 +30,16 @@ void UUnitStatusComponent::InitFromDataTable(const FName& UnitID)
     
     // 현재 상태 초기화
     m_CurrentStat.RemainingHealth = m_BaseStat.MaxHealth;
-    m_CurrentStat.RemainingMovementPoints = m_BaseStat.MovementPoints;
     m_CurrentStat.HasAttacked = false;
     m_CurrentStat.IsWait = false;
     m_CurrentStat.IsAlert = false;
     m_CurrentStat.IsSleep = false;
 
-    // 최종 스테이터스 계산
+    // 최종 스테이터스 계산 (모디파이어 적용)
     RecalculateStats();
+    
+    // 최종 스테이터스 계산 후, 현재 이동력을 최종 이동력으로 설정
+    m_CurrentStat.RemainingMovementPoints = m_FinalStat.MovementPoints;
 }
 
 void UUnitStatusComponent::InitFromBaseStat(const FUnitBaseStat& InBaseStat)
@@ -46,14 +48,16 @@ void UUnitStatusComponent::InitFromBaseStat(const FUnitBaseStat& InBaseStat)
     
     // 현재 상태 초기화
     m_CurrentStat.RemainingHealth = m_BaseStat.MaxHealth;
-    m_CurrentStat.RemainingMovementPoints = m_BaseStat.MovementPoints;
     m_CurrentStat.HasAttacked = false;
     m_CurrentStat.IsWait = false;
     m_CurrentStat.IsAlert = false;
     m_CurrentStat.IsSleep = false;
 
-    // 최종 스테이터스 계산
+    // 최종 스테이터스 계산 (모디파이어 적용)
     RecalculateStats();
+    
+    // 최종 스테이터스 계산 후, 현재 이동력을 최종 이동력으로 설정
+    m_CurrentStat.RemainingMovementPoints = m_FinalStat.MovementPoints;
 }
 
 void UUnitStatusComponent::AddStatModifier(const FUnitStatModifier& Modifier)
@@ -88,6 +92,19 @@ void UUnitStatusComponent::RecalculateStats()
     m_FinalStat.GoldCost = FMath::Max(0, m_BaseStat.GoldCost + TotalModifier.AddGoldCost);
     m_FinalStat.FaithCost = FMath::Max(0, m_BaseStat.FaithCost + TotalModifier.AddFaithCost);
     m_FinalStat.MaintenanceFoodCost = FMath::Max(0, m_BaseStat.MaintenanceFoodCost + TotalModifier.AddMaintenanceFoodCost);
+    
+    // 현재 체력이 최대치를 초과하지 않도록 조정
+    int32 NewMaxHealth = GetMaxHealth();
+    if (m_CurrentStat.RemainingHealth > NewMaxHealth)
+    {
+        m_CurrentStat.RemainingHealth = NewMaxHealth;
+    }
+    
+    // 현재 이동력이 최대치를 초과하지 않도록 조정
+    if (m_CurrentStat.RemainingMovementPoints > m_FinalStat.MovementPoints)
+    {
+        m_CurrentStat.RemainingMovementPoints = m_FinalStat.MovementPoints;
+    }
 }
 
 FUnitStatModifier UUnitStatusComponent::CalculateTotalModifier() const
@@ -105,6 +122,7 @@ FUnitStatModifier UUnitStatusComponent::CalculateTotalModifier() const
 
 void UUnitStatusComponent::ResetTurn()
 {
+    // 턴 초기화시 최종 이동력으로 리셋 (모디파이어 반영된 값)
     m_CurrentStat.RemainingMovementPoints = m_FinalStat.MovementPoints;
     m_CurrentStat.HasAttacked = false;
 }

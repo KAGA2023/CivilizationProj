@@ -2,6 +2,7 @@
 
 #include "UnitManager.h"
 #include "UnitCharacterBase.h"
+#include "../Status/UnitStatusComponent.h"
 #include "../WorldComponent.h"
 #include "../SuperGameInstance.h"
 #include "Engine/Engine.h"
@@ -287,6 +288,15 @@ void UUnitManager::MoveUnitFromFirstToSecondSelection()
         return;
     }
     
+    // 유닛이 이동 가능한 상태인지 확인 (이미 공격했거나 이동력이 없는 경우)
+    if (UUnitStatusComponent* StatusComp = UnitToMove->GetUnitStatusComponent())
+    {
+        if (!StatusComp->CanMove())
+        {
+            return; // 이동할 수 없는 상태
+        }
+    }
+    
     // 두 번째 타일이 이동 가능한지 확인
     if (!CanPlaceUnitAtHex(SecondHexPos))
     {
@@ -302,8 +312,8 @@ void UUnitManager::MoveUnitFromFirstToSecondSelection()
         return;
     }
     
-    // 유닛의 이동력 제한 확인 (유닛별 이동력 사용)
-    int32 MaxMovementCost = GetUnitMovementCost(UnitToMove);
+    // 유닛의 남은 이동력 확인 (유닛별 이동력 사용)
+    int32 MaxMovementCost = GetUnitRemainingMovement(UnitToMove);
     
     // 이동력 제한이 있는 경로 찾기
     TArray<FVector2D> LimitedPath = FindPathWithMovementCost(FirstHexPos, SecondHexPos, MaxMovementCost);
@@ -675,28 +685,23 @@ int32 UUnitManager::GetMovementCostBetweenHexesWithFloor(FVector2D FromHex, FVec
 }
 
 // 유닛 이동력 관리 함수들 구현
-int32 UUnitManager::GetUnitMovementCost(AUnitCharacterBase* Unit) const
+int32 UUnitManager::GetUnitRemainingMovement(AUnitCharacterBase* Unit) const
 {
     if (!Unit)
     {
         return 0;
     }
     
-    // 유닛의 이동력을 가져오는 로직 (임시로 기본값 100 반환)
-    // 나중에 UnitCharacterBase에서 이동력을 가져오도록 수정
-    return 100;
-}
-
-void UUnitManager::SetUnitMovementCost(AUnitCharacterBase* Unit, int32 MovementCost)
-{
-    if (!Unit)
+    // UnitStatusComponent에서 남은 이동력을 가져옴
+    if (UUnitStatusComponent* StatusComp = Unit->GetUnitStatusComponent())
     {
-        return;
+        // CurrentStat의 RemainingMovementPoints는 이번 턴에 사용 가능한 남은 이동력
+        // 경로 탐색 시 실제로 사용할 수 있는 이동력으로 제한해야 함
+        return StatusComp->GetCurrentStat().RemainingMovementPoints;
     }
     
-    // 유닛의 이동력을 설정하는 로직
-    // 나중에 UnitCharacterBase에서 이동력을 설정하도록 수정
-    // 현재는 임시로 구현
+    // 컴포넌트가 없으면 기본값 반환
+    return 0;
 }
 
 // 시각적 이동 애니메이션 함수들 구현
@@ -711,6 +716,30 @@ void UUnitManager::StartVisualMovement(AUnitCharacterBase* Unit, const TArray<FV
     if (MovingUnit != nullptr)
     {
         GetWorld()->GetTimerManager().ClearTimer(MovementTimerHandle);
+    }
+    
+    // 전체 경로의 이동 비용 계산 및 소비
+    if (UUnitStatusComponent* StatusComp = Unit->GetUnitStatusComponent())
+    {
+        int32 TotalCost = 0;
+        
+        // 경로의 실제 이동 비용 계산 (타일별 비용 합산)
+        // FindPathWithMovementCost()에서 이미 이동력 제한으로 경로를 잘랐으므로,
+        // 이 경로는 유닛이 갈 수 있는 최대 거리임
+        for (int32 i = 0; i < Path.Num() - 1; i++)
+        {
+            int32 TileCost = GetMovementCostBetweenHexes(Path[i], Path[i + 1]);
+            if (TileCost >= INT32_MAX)
+            {
+                // 이동 불가능한 경로 (산을 넘어가는 등)
+                return;
+            }
+            TotalCost += TileCost;
+        }
+        
+        // 실제 이동력 소비 (이번 턴의 남은 이동력에서 차감)
+        // 경로는 이미 이동력 범위 내로 잘려서 왔으므로 바로 소비 가능
+        StatusComp->ConsumeMovement(TotalCost);
     }
     
     // 이동 정보 설정
