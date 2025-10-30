@@ -1,45 +1,10 @@
 // Fill out your copyright notice in the Description Settings.
 
 #include "UnitStatusComponent.h"
-#include "Engine/DataTable.h"
-#include "Kismet/GameplayStatics.h"
 
 UUnitStatusComponent::UUnitStatusComponent()
 {
     PrimaryComponentTick.bCanEverTick = true;
-}
-
-void UUnitStatusComponent::InitFromDataTable(const FName& UnitID)
-{
-    // 데이터 테이블 로드
-    m_StatTable = LoadObject<UDataTable>(nullptr, TEXT("/Game/Civilization/Data/DT_UnitBaseStat.DT_UnitBaseStat"));
-    if (!m_StatTable)
-    {
-        return;
-    }
-
-    // 데이터 테이블에서 유닛 정보 찾기
-    FUnitBaseStat* Found = m_StatTable->FindRow<FUnitBaseStat>(UnitID, TEXT("InitFromDataTable"));
-    if (!Found)
-    {
-        return;
-    }
-
-    // 기본 스테이터스 설정
-    m_BaseStat = *Found;
-    
-    // 현재 상태 초기화
-    m_CurrentStat.RemainingHealth = m_BaseStat.MaxHealth;
-    m_CurrentStat.HasAttacked = false;
-    m_CurrentStat.IsWait = false;
-    m_CurrentStat.IsAlert = false;
-    m_CurrentStat.IsSleep = false;
-
-    // 최종 스테이터스 계산 (모디파이어 적용)
-    RecalculateStats();
-    
-    // 최종 스테이터스 계산 후, 현재 이동력을 최종 이동력으로 설정
-    m_CurrentStat.RemainingMovementPoints = m_FinalStat.MovementPoints;
 }
 
 void UUnitStatusComponent::InitFromBaseStat(const FUnitBaseStat& InBaseStat)
@@ -91,7 +56,7 @@ void UUnitStatusComponent::RecalculateStats()
     m_FinalStat.ProductionCost = FMath::Max(0, m_BaseStat.ProductionCost + TotalModifier.AddProductionCost);
     m_FinalStat.GoldCost = FMath::Max(0, m_BaseStat.GoldCost + TotalModifier.AddGoldCost);
     m_FinalStat.FaithCost = FMath::Max(0, m_BaseStat.FaithCost + TotalModifier.AddFaithCost);
-    m_FinalStat.MaintenanceFoodCost = FMath::Max(0, m_BaseStat.MaintenanceFoodCost + TotalModifier.AddMaintenanceFoodCost);
+    m_FinalStat.FoodCost = FMath::Max(0, m_BaseStat.FoodCost + TotalModifier.AddFoodCost);
     
     // 현재 체력이 최대치를 초과하지 않도록 조정
     int32 NewMaxHealth = GetMaxHealth();

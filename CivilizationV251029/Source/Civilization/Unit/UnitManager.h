@@ -30,7 +30,7 @@ struct CIVILIZATION_API FAStarNode
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pathfinding")
     FVector2D ParentHex = FVector2D::ZeroVector; // 부모 노드 좌표
-
+    
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pathfinding")
     bool bIsWalkable = true; // 이동 가능한지 여부
 

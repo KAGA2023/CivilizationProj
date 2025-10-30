@@ -51,13 +51,13 @@ struct FUnitStatModifier
     int32 AddProductionCost = 0;              // 생산 비용 (음수로 할인)
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    int32 AddFoodCost = 0;                   // 식량 비용 (음수로 할인)
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
     int32 AddGoldCost = 0;                   // 골드 비용 (음수로 할인)
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     int32 AddFaithCost = 0;                  // 신앙 비용 (음수로 할인)
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    int32 AddMaintenanceFoodCost = 0;            // 턴당 식량 유지비 (음수로 할인)
 
     // 연산자 오버로드
     bool operator==(const FUnitStatModifier& Other) const;
@@ -102,13 +102,13 @@ struct FUnitBaseStat : public FTableRowBase
     int32 ProductionCost = 0;                   // 생산 비용
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    int32 FoodCost = 0;                         // 식량 비용
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
     int32 GoldCost = 0;                         // 골드 비용
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     int32 FaithCost = 0;                        // 신앙 비용
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    int32 MaintenanceFoodCost = 0;                  // 턴당 식량 유지비
 
     // 특수 능력
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -188,11 +188,11 @@ struct FUnitFinalStat
     int32 ProductionCost = 0;             // 최종 생산 비용
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    int32 FoodCost = 0;                   // 최종 식량 비용
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
     int32 GoldCost = 0;                   // 최종 골드 비용
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     int32 FaithCost = 0;                  // 최종 신앙 비용
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    int32 MaintenanceFoodCost = 0;            // 최종 턴당 식량 유지비
 };

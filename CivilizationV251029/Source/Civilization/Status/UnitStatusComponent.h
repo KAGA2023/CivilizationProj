@@ -18,10 +18,6 @@ class CIVILIZATION_API UUnitStatusComponent : public UActorComponent
     GENERATED_BODY()
 
 protected:
-    // 데이터 테이블 참조
-    UPROPERTY()
-    UDataTable* m_StatTable = nullptr;
-
     // 기본 스테이터스 데이터
     UPROPERTY(BlueprintReadOnly, Category = "Unit Status")
     FUnitBaseStat m_BaseStat;
@@ -45,10 +41,7 @@ public:
     UPROPERTY(BlueprintAssignable)
     FOnUnitDiedSignature OnUnitDied;
 
-    // 초기화 함수들
-    UFUNCTION(BlueprintCallable, Category = "Unit Status")
-    void InitFromDataTable(const FName& UnitID);
-
+    // 초기화 함수 (외부에서 준비된 BaseStat을 받아서 초기화)
     UFUNCTION(BlueprintCallable, Category = "Unit Status")
     void InitFromBaseStat(const FUnitBaseStat& InBaseStat);
 
@@ -88,7 +81,7 @@ public:
     int32 GetFaithCost() const { return m_FinalStat.FaithCost; }
 
     UFUNCTION(BlueprintCallable, Category = "Unit Status")
-    int32 GetMaintenanceFoodCost() const { return m_FinalStat.MaintenanceFoodCost; }
+    int32 GetFoodCost() const { return m_FinalStat.FoodCost; }
 
     // 모디파이어 관리
     UFUNCTION(BlueprintCallable, Category = "Unit Status")

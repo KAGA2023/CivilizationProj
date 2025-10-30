@@ -14,7 +14,7 @@ bool FUnitStatModifier::operator==(const FUnitStatModifier& Other) const
            AddProductionCost == Other.AddProductionCost &&
            AddGoldCost == Other.AddGoldCost &&
            AddFaithCost == Other.AddFaithCost &&
-           AddMaintenanceFoodCost == Other.AddMaintenanceFoodCost;
+           AddFoodCost == Other.AddFoodCost;
 }
 
 FUnitStatModifier FUnitStatModifier::operator+(const FUnitStatModifier& Other) const
@@ -29,7 +29,7 @@ FUnitStatModifier FUnitStatModifier::operator+(const FUnitStatModifier& Other) c
     Result.AddProductionCost = AddProductionCost + Other.AddProductionCost;
     Result.AddGoldCost = AddGoldCost + Other.AddGoldCost;
     Result.AddFaithCost = AddFaithCost + Other.AddFaithCost;
-    Result.AddMaintenanceFoodCost = AddMaintenanceFoodCost + Other.AddMaintenanceFoodCost;
+    Result.AddFoodCost = AddFoodCost + Other.AddFoodCost;
     return Result;
 }
 
@@ -45,7 +45,7 @@ FUnitStatModifier FUnitStatModifier::operator-(const FUnitStatModifier& Other) c
     Result.AddProductionCost = AddProductionCost - Other.AddProductionCost;
     Result.AddGoldCost = AddGoldCost - Other.AddGoldCost;
     Result.AddFaithCost = AddFaithCost - Other.AddFaithCost;
-    Result.AddMaintenanceFoodCost = AddMaintenanceFoodCost - Other.AddMaintenanceFoodCost;
+    Result.AddFoodCost = AddFoodCost - Other.AddFoodCost;
     return Result;
 }
 
@@ -60,7 +60,7 @@ void FUnitStatModifier::operator+=(const FUnitStatModifier& Other)
     AddProductionCost += Other.AddProductionCost;
     AddGoldCost += Other.AddGoldCost;
     AddFaithCost += Other.AddFaithCost;
-    AddMaintenanceFoodCost += Other.AddMaintenanceFoodCost;
+    AddFoodCost += Other.AddFoodCost;
 }
 
 void FUnitStatModifier::operator-=(const FUnitStatModifier& Other)
@@ -74,7 +74,7 @@ void FUnitStatModifier::operator-=(const FUnitStatModifier& Other)
     AddProductionCost -= Other.AddProductionCost;
     AddGoldCost -= Other.AddGoldCost;
     AddFaithCost -= Other.AddFaithCost;
-    AddMaintenanceFoodCost -= Other.AddMaintenanceFoodCost;
+    AddFoodCost -= Other.AddFoodCost;
 }
 
 void FUnitStatModifier::Reset()
@@ -88,5 +88,5 @@ void FUnitStatModifier::Reset()
     AddProductionCost = 0;
     AddGoldCost = 0;
     AddFaithCost = 0;
-    AddMaintenanceFoodCost = 0;
+    AddFoodCost = 0;
 }
