@@ -6,6 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "WorldComponent.h"
 #include "WorldTileActor.h"
+#include "City/CityActor.h"
 #include "WorldSpawner.generated.h"
 
 class UUnitManager;
@@ -60,6 +61,31 @@ public:
 	// 모든 타일 액터 제거
 	UFUNCTION(BlueprintCallable, Category = "World")
 	void ClearAllTiles();
+
+	// ================= 도시 스폰/관리 =================
+	// 도시 액터 클래스 (블루프린트에서 설정)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City")
+	TSubclassOf<ACityActor> CityActorClass;
+
+	// 스폰된 도시 액터들 (육각형 좌표 → 액터)
+	UPROPERTY(BlueprintReadOnly, Category = "City")
+	TMap<FVector2D, ACityActor*> CityActors;
+
+	// 시작 도시 전부 스폰 (WorldComponent의 StartingCityHexes 기준)
+	UFUNCTION(BlueprintCallable, Category = "City")
+	void SpawnAllCities();
+
+	// 특정 좌표에 도시 스폰
+	UFUNCTION(BlueprintCallable, Category = "City")
+	ACityActor* SpawnCityActorAtHex(FVector2D Hex);
+
+	// 특정 좌표의 도시 액터 가져오기
+	UFUNCTION(BlueprintCallable, Category = "City")
+	ACityActor* GetCityActorAtHex(FVector2D Hex) const;
+
+	// 모든 도시 액터 제거
+	UFUNCTION(BlueprintCallable, Category = "City")
+	void ClearAllCities();
 
 protected:
 	// 스폰 중인지 여부

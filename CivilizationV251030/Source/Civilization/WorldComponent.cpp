@@ -38,6 +38,9 @@ void UWorldComponent::GenerateWorld()
     
     // 지형 생성
     GenerateTerrain();
+
+    // 도시 시작 위치 계산 (데이터 전용)
+    GenerateCities();
     
     // 기후대 생성
     GenerateClimateZones();
@@ -300,6 +303,102 @@ void UWorldComponent::LoadDataTables()
     }
 }
 
+// ================= 도시 시작 위치 계산(데이터 전용) =================
+void UWorldComponent::GenerateCities(int32 NumCities, int32 MinHexDistance, int32 RequiredLandNeighbors)
+{
+    StartingCityHexes.Empty();
+
+    if (NumCities <= 0)
+    {
+        return;
+    }
+
+    // 후보 수집: 육지이고, 반경1 이웃 6칸 중 최소 RequiredLandNeighbors가 육지인 타일
+    TArray<FVector2D> Candidates;
+    Candidates.Reserve(HexTiles.Num());
+
+    for (const auto& Pair : HexTiles)
+    {
+        const FVector2D& Hex = Pair.Key;
+        UWorldTile* Tile = Pair.Value;
+        if (!Tile)
+        {
+            continue;
+        }
+
+        if (Tile->GetTerrainType() != ETerrainType::Land)
+        {
+            continue; // 도시는 반드시 육지에만
+        }
+
+        // 반경1 이웃 6칸 중 육지 개수 계산
+        const TArray<FVector2D> Neighbors = GetHexNeighbors(Hex);
+        int32 LandNeighborCount = 0;
+        for (const FVector2D& NHex : Neighbors)
+        {
+            if (UWorldTile* NTile = GetTileAtHex(NHex))
+            {
+                if (NTile->GetTerrainType() == ETerrainType::Land)
+                {
+                    LandNeighborCount++;
+                }
+            }
+        }
+
+        if (LandNeighborCount >= RequiredLandNeighbors)
+        {
+            Candidates.Add(Hex);
+        }
+    }
+
+    if (Candidates.Num() == 0)
+    {
+        return;
+    }
+
+    // 셔플하여 무작위성 부여
+    for (int32 i = Candidates.Num() - 1; i > 0; --i)
+    {
+        const int32 j = FMath::RandRange(0, i);
+        Candidates.Swap(i, j);
+    }
+
+    // 최소 거리 제약(>= MinHexDistance)으로 선택
+    for (const FVector2D& Hex : Candidates)
+    {
+        if (StartingCityHexes.Num() >= NumCities)
+        {
+            break;
+        }
+
+        bool bOK = true;
+        for (const FVector2D& Placed : StartingCityHexes)
+        {
+            if (GetHexDistance(Hex, Placed) < MinHexDistance)
+            {
+                bOK = false;
+                break;
+            }
+        }
+
+        if (bOK)
+        {
+            StartingCityHexes.Add(Hex);
+        }
+    }
+}
+
+bool UWorldComponent::RemoveCityAt(FVector2D Hex)
+{
+    if (!StartingCityHexes.Contains(Hex))
+    {
+        return false;
+    }
+    StartingCityHexes.Remove(Hex);
+    OnCityRemoved.Broadcast(Hex);
+    return true;
+}
+
 void UWorldComponent::GenerateTerrain()
 {
     // 판게아 스타일 지형 생성 (연결된 대륙)
@@ -316,7 +415,12 @@ void UWorldComponent::GenerateResources()
         {
             if (Tile->GetTerrainType() == ETerrainType::Land)
             {
-                LandTiles.Add(Tile);
+                // 시작 도시가 배치될 타일은 자원 배치에서 제외
+                const FVector2D HexPos = Tile->GetGridPosition();
+                if (!StartingCityHexes.Contains(HexPos))
+                {
+                    LandTiles.Add(Tile);
+                }
             }
         }
     }
@@ -728,6 +832,11 @@ void UWorldComponent::GenerateForests()
         {
             if (Tile->GetTerrainType() == ETerrainType::Land)
             {
+                // 시작 도시가 배치될 타일은 숲 생성 제외
+                if (StartingCityHexes.Contains(Pair.Key))
+                {
+                    continue;
+                }
                 // 랜덤으로 숲 생성
                 float RandomValue = FMath::FRand();
                 if (RandomValue < WorldConfig.ForestPercentage)

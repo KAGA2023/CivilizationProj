@@ -10,6 +10,9 @@
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnTileUpdated, UWorldTile*, Tile); // 타일 업데이트 이벤트
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnTileSelected, UWorldTile*, Tile); // 타일 선택 이벤트
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWorldGenerated, bool, bSuccess); // 월드 생성 완료 이벤트
+// 도시 이벤트
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCityPlaced, FVector2D, CityHex);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCityRemoved, FVector2D, CityHex);
 
 // 타일 크기 상수 (고정값)
 const float TILE_SIZE = 190.0f;
@@ -50,6 +53,10 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World State")
     bool bIsWorldGenerated = false; // 월드 생성 완료 여부
 
+	// 시작 도시 좌표들 (도시 스폰은 WorldSpawner에서 처리)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "City Placement")
+	TArray<FVector2D> StartingCityHexes;
+
 public:
     UWorldComponent();
 
@@ -62,6 +69,13 @@ public:
 
     UPROPERTY(BlueprintAssignable, Category = "World Events")
     FOnWorldGenerated OnWorldGenerated;
+
+    // 도시 배치/제거 이벤트
+    UPROPERTY(BlueprintAssignable, Category = "City Events")
+    FOnCityPlaced OnCityPlaced;
+
+    UPROPERTY(BlueprintAssignable, Category = "City Events")
+    FOnCityRemoved OnCityRemoved;
 
 protected:
     virtual void BeginPlay() override;
@@ -170,6 +184,27 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Data Tables")
     void LoadDataTables(); // 데이터테이블 로딩
+
+	// ================= 도시 시작 위치 계산(데이터 전용) =================
+	// 지형이 육지인 타일 중에서, 다른 도시와 최소 거리 3, 반경1 이웃 6칸 중 최소 5칸이 육지인 조건을 만족하는 좌표 선택
+	// 선택된 좌표는 StartingCityHexes에 저장됨(스폰은 하지 않음)
+	UFUNCTION(BlueprintCallable, Category = "City Placement")
+	void GenerateCities(int32 NumCities = 4, int32 MinHexDistance = 5, int32 RequiredLandNeighbors = 5);
+
+	UFUNCTION(BlueprintCallable, Category = "City Placement")
+	TArray<FVector2D> GetStartingCityHexes() const { return StartingCityHexes; }
+
+	// ================= 도시 좌표/조회 유틸 =================
+	UFUNCTION(BlueprintCallable, Category = "City Placement")
+	int32 GetCityCount() const { return StartingCityHexes.Num(); }
+
+	UFUNCTION(BlueprintCallable, Category = "City Placement")
+	bool IsCityAtHex(FVector2D Hex) const { return StartingCityHexes.Contains(Hex); }
+
+	// ================= 도시 관리 훅 =================
+	// 데이터 배열 수정 + 이벤트 브로드캐스트. 스폰/삭제는 외부(WorldSpawner)가 처리
+	UFUNCTION(BlueprintCallable, Category = "City Placement")
+	bool RemoveCityAt(FVector2D Hex);
 
     // 타일 생산량 계산
     UFUNCTION(BlueprintCallable, Category = "Tile Calculation")

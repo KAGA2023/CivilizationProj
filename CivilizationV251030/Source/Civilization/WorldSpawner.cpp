@@ -3,6 +3,7 @@
 #include "WorldSpawner.h"
 #include "SuperGameInstance.h"
 #include "Unit/UnitManager.h"
+#include "City/CityActor.h"
 
 AWorldSpawner::AWorldSpawner()
 {
@@ -174,5 +175,86 @@ void AWorldSpawner::ClearAllTiles()
 	}
 
 	TileActors.Empty();
+}
+
+void AWorldSpawner::SpawnAllCities()
+{
+	if (!WorldComponent)
+	{
+		return;
+	}
+
+	// 기존 도시 제거
+	ClearAllCities();
+
+	TArray<FVector2D> CityHexes = WorldComponent->GetStartingCityHexes();
+	for (const FVector2D& Hex : CityHexes)
+	{
+		SpawnCityActorAtHex(Hex);
+	}
+}
+
+ACityActor* AWorldSpawner::SpawnCityActorAtHex(FVector2D Hex)
+{
+	if (!WorldComponent || !GetWorld())
+	{
+		return nullptr;
+	}
+
+	if (!CityActorClass)
+	{
+		CityActorClass = ACityActor::StaticClass();
+	}
+
+	FVector SpawnLocation = WorldComponent->HexToWorld(Hex);
+
+	// 지형 타입에 따라 Z 오프셋 적용
+	if (UWorldTile* Tile = WorldComponent->GetTileAtHex(Hex))
+	{
+		float ZOffset = 73.0f; // Plains 기본값
+		ELandType LandType = Tile->GetLandType();
+		if (LandType == ELandType::Hills)
+		{
+			ZOffset = 146.0f;
+		}
+		else if (LandType == ELandType::Mountains)
+		{
+			ZOffset = 219.0f;
+		}
+		SpawnLocation.Z += ZOffset;
+	}
+	FRotator SpawnRotation = FRotator::ZeroRotator;
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = this;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	ACityActor* City = GetWorld()->SpawnActor<ACityActor>(CityActorClass, SpawnLocation, SpawnRotation, SpawnParams);
+	if (City)
+	{
+		CityActors.Add(Hex, City);
+	}
+	return City;
+}
+
+ACityActor* AWorldSpawner::GetCityActorAtHex(FVector2D Hex) const
+{
+	if (ACityActor* const* Found = CityActors.Find(Hex))
+	{
+		return *Found;
+	}
+	return nullptr;
+}
+
+void AWorldSpawner::ClearAllCities()
+{
+	for (auto& Pair : CityActors)
+	{
+		if (Pair.Value)
+		{
+			Pair.Value->Destroy();
+		}
+	}
+	CityActors.Empty();
 }
 

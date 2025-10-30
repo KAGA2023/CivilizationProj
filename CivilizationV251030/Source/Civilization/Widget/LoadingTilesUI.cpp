@@ -64,6 +64,9 @@ void ULoadingTilesUI::StartTileSpawning()
 	
 	// 타일 스폰 시작 (WorldComponent는 WorldSpawner가 GameInstance에서 가져옴)
 	WorldSpawner->SpawnAllTiles();
+
+	// 도시 스폰 시작 (WorldComponent의 StartingCityHexes 기준)
+	WorldSpawner->SpawnAllCities();
 }
 
 void ULoadingTilesUI::NativeConstruct()
