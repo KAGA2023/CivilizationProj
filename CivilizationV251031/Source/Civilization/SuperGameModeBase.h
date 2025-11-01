@@ -15,6 +15,7 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
+	virtual void PostLogin(APlayerController* NewPlayer) override;
 
 public:
 	// 게임 상태 관리
@@ -140,4 +141,5 @@ protected:
 	void SwitchToNextPlayer(); // 다음 플레이어로 전환합니다
 	void CheckGameEndConditions(); // 게임 종료 조건을 확인합니다
 	void UpdateGameTime(float DeltaTime); // 게임 시간을 업데이트합니다
+	void CreateAIPlayerStates(); // AI 플레이어 스테이트 생성
 };

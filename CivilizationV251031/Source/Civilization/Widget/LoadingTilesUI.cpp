@@ -67,6 +67,9 @@ void ULoadingTilesUI::StartTileSpawning()
 
 	// 도시 스폰 시작 (WorldComponent의 StartingCityHexes 기준)
 	WorldSpawner->SpawnAllCities();
+
+	// 도시를 플레이어들에게 배정
+	WorldSpawner->AssignCitiesToPlayers();
 }
 
 void ULoadingTilesUI::NativeConstruct()

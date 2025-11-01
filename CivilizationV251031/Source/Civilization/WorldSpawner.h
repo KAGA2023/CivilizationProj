@@ -87,6 +87,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "City")
 	void ClearAllCities();
 
+	// 도시를 플레이어들에게 배정
+	UFUNCTION(BlueprintCallable, Category = "City")
+	void AssignCitiesToPlayers();
+
 protected:
 	// 스폰 중인지 여부
 	UPROPERTY(BlueprintReadOnly, Category = "World")

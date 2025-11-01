@@ -2,12 +2,14 @@
 #include "SuperGameInstance.h"
 #include "SuperGameController.h"
 #include "SuperCameraPawn.h"
+#include "SuperPlayerState.h"
 
 ASuperGameModeBase::ASuperGameModeBase()
 {
-	// PlayerController와 Pawn 클래스 설정
+	// PlayerController, Pawn, PlayerState 클래스 설정
 	PlayerControllerClass = ASuperGameController::StaticClass();
 	DefaultPawnClass = ASuperCameraPawn::StaticClass();
+	PlayerStateClass = ASuperPlayerState::StaticClass();
 	
 	// 기본값 초기화
 	bIsGameActive = false;
@@ -30,6 +32,9 @@ ASuperGameModeBase::ASuperGameModeBase()
 void ASuperGameModeBase::BeginPlay()
 {
 	Super::BeginPlay();
+	
+	// 모든 플레이어 스테이트 생성 (AI 3개)
+	CreateAIPlayerStates();
 	
 	// 게임 초기화
 	InitializeGame();
@@ -219,6 +224,55 @@ void ASuperGameModeBase::UpdateGameTime(float DeltaTime)
 		if (TurnTimeLimit > 0 && CurrentTurnTime >= TurnTimeLimit)
 		{
 			NextTurn();
+		}
+	}
+}
+
+void ASuperGameModeBase::PostLogin(APlayerController* NewPlayer)
+{
+	Super::PostLogin(NewPlayer);
+	
+	// PlayerState는 PostLogin 이후에 생성됨
+	if (ASuperPlayerState* PlayerState = Cast<ASuperPlayerState>(NewPlayer->PlayerState))
+	{
+		// PlayerIndex 0으로 설정 (실제 플레이어)
+		PlayerState->PlayerIndex = 0;
+		
+		// GameInstance에 등록
+		if (USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance()))
+		{
+			GameInstance->AddPlayerState(PlayerState);
+		}
+	}
+}
+
+void ASuperGameModeBase::CreateAIPlayerStates()
+{
+	// GameInstance 가져오기
+	USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance());
+	if (!GameInstance)
+	{
+		return;
+	}
+	
+	// AI PlayerState 3개 생성 (Player 1~3)
+	for (int32 i = 1; i <= 3; i++)
+	{
+		// PlayerState 수동 생성
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		
+		ASuperPlayerState* PlayerState = GetWorld()->SpawnActor<ASuperPlayerState>(FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
+		if (PlayerState)
+		{
+			// PlayerIndex 설정
+			PlayerState->PlayerIndex = i;
+			
+			// GameInstance에 등록
+			GameInstance->AddPlayerState(PlayerState);
+			
+			// 초기화
+			PlayerState->InitializePlayer();
 		}
 	}
 }

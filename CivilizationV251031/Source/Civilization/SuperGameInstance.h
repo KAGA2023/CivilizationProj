@@ -73,4 +73,20 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Unit Management") // 유닛 매니저 정리 (메모리 해제)
 	void ClearUnitManager();
+
+	// 플레이어 스테이트 관리
+	UPROPERTY(BlueprintReadWrite, Category = "Player Management") // 모든 플레이어 스테이트
+	TArray<class ASuperPlayerState*> PlayerStates;
+
+	UFUNCTION(BlueprintCallable, Category = "Player Management") // 플레이어 스테이트 추가
+	void AddPlayerState(class ASuperPlayerState* PlayerState);
+
+	UFUNCTION(BlueprintCallable, Category = "Player Management") // 플레이어 스테이트 가져오기
+	class ASuperPlayerState* GetPlayerState(int32 PlayerIndex) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Player Management") // 총 플레이어 수
+	int32 GetPlayerStateCount() const { return PlayerStates.Num(); }
+
+	UFUNCTION(BlueprintCallable, Category = "Player Management") // 모든 플레이어 스테이트 정리
+	void ClearAllPlayerStates();
 };

@@ -234,22 +234,39 @@ void UWorldComponent::HandleTileHoverBegin(UWorldTile* HoveredTile)
         return;
     }
     
-    // 호버된 타일 정보 로그 출력 (임시)
+    // 호버된 타일 정보 로그 출력
     FVector2D HexPos = HoveredTile->GetGridPosition();
+    int32 OwnerID = HoveredTile->GetOwnerPlayerID();
     
     // 바다 타일인지 확인
     if (HoveredTile->GetTerrainType() == ETerrainType::Ocean)
     {
-        //UE_LOG(LogTemp, Warning, TEXT("호버 시작: Q=%d, R=%d - 바다"), 
-               //(int32)HexPos.X, (int32)HexPos.Y);
+        if (OwnerID >= 0)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("호버 시작: Q=%d, R=%d - 바다, 소유자ID=%d"), 
+                   (int32)HexPos.X, (int32)HexPos.Y, OwnerID);
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("호버 시작: Q=%d, R=%d - 바다, 소유자 없음"), 
+                   (int32)HexPos.X, (int32)HexPos.Y);
+        }
     }
     else
     {
         FString ClimateName = HoveredTile->GetClimateTypeName();
         FString LandTypeName = HoveredTile->GetLandTypeName();
         
-        //UE_LOG(LogTemp, Warning, TEXT("호버 시작: Q=%d, R=%d - %s %s"), 
-               //(int32)HexPos.X, (int32)HexPos.Y, *ClimateName, *LandTypeName);
+        if (OwnerID >= 0)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("호버 시작: Q=%d, R=%d - %s %s, 소유자ID=%d"), 
+                   (int32)HexPos.X, (int32)HexPos.Y, *ClimateName, *LandTypeName, OwnerID);
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("호버 시작: Q=%d, R=%d - %s %s, 소유자 없음"), 
+                   (int32)HexPos.X, (int32)HexPos.Y, *ClimateName, *LandTypeName);
+        }
     }
 }
 

@@ -2,12 +2,14 @@
 
 #include "SuperPlayerState.h"
 #include "WorldComponent.h"
+#include "City/CityComponent.h"
 #include "Engine/World.h"
+#include "SuperGameInstance.h"
 
 ASuperPlayerState::ASuperPlayerState()
 {
     // 자원 초기화
-    FoodGauge = FResourceGauge(); // 기본값으로 초기화
+    Food = 0;
     Production = 0;
     Gold = 0;
     Science = 0;
@@ -24,9 +26,17 @@ ASuperPlayerState::ASuperPlayerState()
     TotalScienceGained = 0;
     TotalFaithGained = 0;
 
+    // 플레이어 인덱스 초기화
+    PlayerIndex = -1;
+
     // 타일 관리 초기화
     TotalOwnedTiles = 0;
     OwnedTileCoordinates.Empty();
+
+    // 도시 관리 초기화
+    CityComponent = nullptr;
+    bHasCity = false;
+    CityCoordinate = FVector2D::ZeroVector;
 
     // 사치 자원 관리 초기화
     OwnedLuxuryResources.Empty();
@@ -45,14 +55,8 @@ void ASuperPlayerState::AddFood(int32 Amount)
 {
     if (Amount > 0)
     {
-        bool bCanIncreasePopulation = FoodGauge.AddAmount(Amount);
+        Food += Amount;
         TotalFoodProduced += Amount;
-        
-        // 게이지가 가득 차면 인구 증가
-        if (bCanIncreasePopulation && Population < LimitPopulation)
-        {
-            Population++;
-        }
     }
 }
 
@@ -93,13 +97,15 @@ void ASuperPlayerState::AddFaith(int32 Amount)
 }
 
 
-// ========== 게이지 관리 함수들 ==========
-void ASuperPlayerState::SetFoodGaugeMax(int32 MaxAmount)
+bool ASuperPlayerState::SpendFood(int32 Amount)
 {
-    if (MaxAmount > 0)
+    if (Amount <= 0 || Food < Amount)
     {
-        FoodGauge.MaxAmount = MaxAmount;
+        return false;
     }
+    
+    Food -= Amount;
+    return true;
 }
 
 bool ASuperPlayerState::SpendProduction(int32 Amount)
@@ -160,7 +166,9 @@ void ASuperPlayerState::AddOwnedTile(FVector2D TileCoordinate, UWorldComponent* 
             if (UWorldTile* Tile = WorldComponent->GetTileAtHex(TileCoordinate))
             {
                 Tile->SetOwned(true);
-                Tile->SetOwnerPlayerID(GetPlayerId());
+                // PlayerIndex가 설정되어 있으면 PlayerIndex 사용, 없으면 GetPlayerId() 사용
+                int32 OwnerID = (PlayerIndex >= 0) ? PlayerIndex : GetPlayerId();
+                Tile->SetOwnerPlayerID(OwnerID);
             }
         }
     }
@@ -235,10 +243,15 @@ bool ASuperPlayerState::IsTileOwned(FVector2D TileCoordinate) const
 // ========== 매턴 처리 함수들 ==========
 void ASuperPlayerState::ProcessTurnResources()
 {
-    // WorldComponent 참조 가져오기 (임시로 nullptr 처리, 나중에 GameMode나 GameInstance에서 가져올 예정)
+    // GameInstance에서 WorldComponent 참조 가져오기
     UWorldComponent* WorldComponent = nullptr;
-    
-    // TODO: GameMode나 GameInstance에서 WorldComponent 참조 가져오는 로직 추가 필요
+    if (UWorld* World = GetWorld())
+    {
+        if (USuperGameInstance* GameInstance = Cast<USuperGameInstance>(World->GetGameInstance()))
+        {
+            WorldComponent = GameInstance->GetGeneratedWorldComponent();
+        }
+    }
     
     if (!WorldComponent)
     {
@@ -252,6 +265,13 @@ void ASuperPlayerState::ProcessTurnResources()
     int32 TurnScience = CalculateTotalScienceYield(WorldComponent);
     int32 TurnFaith = CalculateTotalFaithYield(WorldComponent);
     
+    // 도시 생산량 추가
+    TurnFood += GetCityFoodYield();
+    TurnProduction += GetCityProductionYield();
+    TurnGold += GetCityGoldYield();
+    TurnScience += GetCityScienceYield();
+    TurnFaith += GetCityFaithYield();
+    
     // 자원 추가
     AddFood(TurnFood);
     AddProduction(TurnProduction);
@@ -260,38 +280,6 @@ void ASuperPlayerState::ProcessTurnResources()
     AddFaith(TurnFaith);
     
 }
-
-void ASuperPlayerState::ProcessTurnPopulation()
-{
-    // 인구가 제한 인구 수에 도달했는지 확인
-    if (Population >= LimitPopulation)
-    {
-        return;
-    }
-    
-    // 데이터테이블에서 현재 인구 레벨에 맞는 식량 요구량 가져오기
-    int32 RequiredFood = 100; // 기본값
-    
-    if (PopulationGrowthDataTable.IsValid())
-    {
-        UDataTable* DataTable = PopulationGrowthDataTable.LoadSynchronous();
-        if (DataTable)
-        {
-            FPopulationGrowthData* GrowthData = DataTable->FindRow<FPopulationGrowthData>(
-                *FString::Printf(TEXT("Population_%d"), Population), 
-                TEXT("인구 증가 데이터 검색"));
-            
-            if (GrowthData)
-            {
-                RequiredFood = GrowthData->RequiredFood;
-            }
-        }
-    }
-    
-    // 식량 게이지 최대값을 요구량으로 설정
-    SetFoodGaugeMax(RequiredFood);
-}
-
 
 // ========== 자원 생산량 계산 함수들 ==========
 int32 ASuperPlayerState::CalculateTotalFoodYield(UWorldComponent* WorldComponent) const
@@ -395,16 +383,203 @@ int32 ASuperPlayerState::CalculateTotalFaithYield(UWorldComponent* WorldComponen
 }
 
 // ========== 도시 관리 함수들 ==========
+void ASuperPlayerState::SetCityComponent(UCityComponent* InCityComponent)
+{
+    CityComponent = InCityComponent;
+    
+    if (CityComponent)
+    {
+        bHasCity = true;
+    }
+    else
+    {
+        bHasCity = false;
+    }
+}
+
 void ASuperPlayerState::SetCityCoordinate(FVector2D Coordinate)
 {
     CityCoordinate = Coordinate;
-    bHasCity = true;
 }
 
 void ASuperPlayerState::RemoveCity()
 {
+    CityComponent = nullptr;
     CityCoordinate = FVector2D::ZeroVector;
     bHasCity = false;
+}
+
+// ========== 도시 생산량 함수들 ==========
+int32 ASuperPlayerState::GetCityFoodYield() const
+{
+    if (!CityComponent)
+    {
+        return 0;
+    }
+    return CityComponent->GetFinalFoodYield();
+}
+
+int32 ASuperPlayerState::GetCityProductionYield() const
+{
+    if (!CityComponent)
+    {
+        return 0;
+    }
+    return CityComponent->GetFinalProductionYield();
+}
+
+int32 ASuperPlayerState::GetCityGoldYield() const
+{
+    if (!CityComponent)
+    {
+        return 0;
+    }
+    return CityComponent->GetFinalGoldYield();
+}
+
+int32 ASuperPlayerState::GetCityScienceYield() const
+{
+    if (!CityComponent)
+    {
+        return 0;
+    }
+    return CityComponent->GetFinalScienceYield();
+}
+
+int32 ASuperPlayerState::GetCityFaithYield() const
+{
+    if (!CityComponent)
+    {
+        return 0;
+    }
+    return CityComponent->GetFinalFaithYield();
+}
+
+// ========== 도시 건물 구매 함수들 ==========
+bool ASuperPlayerState::PurchaseBuildingWithGold(EBuildingType BuildingType)
+{
+    // 도시가 없으면 실패
+    if (!CityComponent)
+    {
+        return false;
+    }
+    
+    // 이미 건설된 건물이면 실패
+    if (CityComponent->HasBuilding(BuildingType))
+    {
+        return false;
+    }
+    
+    // 구매 비용 확인
+    int32 GoldCost = GetBuildingGoldCost(BuildingType);
+    if (GoldCost <= 0 || Gold < GoldCost)
+    {
+        // 골드가 충분하지 않으면 실패
+        return false;
+    }
+    
+    // 골드 차감
+    if (!SpendGold(GoldCost))
+    {
+        return false;
+    }
+    
+    // 건물 추가
+    CityComponent->AddBuilding(BuildingType);
+    return true;
+}
+
+bool ASuperPlayerState::PurchaseBuildingWithFaith(EBuildingType BuildingType)
+{
+    // 도시가 없으면 실패
+    if (!CityComponent)
+    {
+        return false;
+    }
+    
+    // 이미 건설된 건물이면 실패
+    if (CityComponent->HasBuilding(BuildingType))
+    {
+        return false;
+    }
+    
+    // 구매 비용 확인
+    int32 FaithCost = GetBuildingFaithCost(BuildingType);
+    if (FaithCost <= 0 || Faith < FaithCost)
+    {
+        // 신앙이 충분하지 않으면 실패
+        return false;
+    }
+    
+    // 신앙 차감
+    if (!SpendFaith(FaithCost))
+    {
+        return false;
+    }
+    
+    // 건물 추가
+    CityComponent->AddBuilding(BuildingType);
+    return true;
+}
+
+int32 ASuperPlayerState::GetBuildingGoldCost(EBuildingType BuildingType) const
+{
+    if (!CityComponent)
+    {
+        return 0;
+    }
+    
+    FBuildingData BuildingData = CityComponent->GetBuildingData(BuildingType);
+    return BuildingData.GoldCost;
+}
+
+int32 ASuperPlayerState::GetBuildingFaithCost(EBuildingType BuildingType) const
+{
+    if (!CityComponent)
+    {
+        return 0;
+    }
+    
+    FBuildingData BuildingData = CityComponent->GetBuildingData(BuildingType);
+    return BuildingData.FaithCost;
+}
+
+bool ASuperPlayerState::CanPurchaseBuildingWithGold(EBuildingType BuildingType) const
+{
+    // 도시가 없으면 구매 불가
+    if (!CityComponent)
+    {
+        return false;
+    }
+    
+    // 이미 건설된 건물이면 구매 불가
+    if (CityComponent->HasBuilding(BuildingType))
+    {
+        return false;
+    }
+    
+    // 구매 비용 확인
+    int32 GoldCost = GetBuildingGoldCost(BuildingType);
+    return GoldCost > 0 && Gold >= GoldCost;
+}
+
+bool ASuperPlayerState::CanPurchaseBuildingWithFaith(EBuildingType BuildingType) const
+{
+    // 도시가 없으면 구매 불가
+    if (!CityComponent)
+    {
+        return false;
+    }
+    
+    // 이미 건설된 건물이면 구매 불가
+    if (CityComponent->HasBuilding(BuildingType))
+    {
+        return false;
+    }
+    
+    // 구매 비용 확인
+    int32 FaithCost = GetBuildingFaithCost(BuildingType);
+    return FaithCost > 0 && Faith >= FaithCost;
 }
 
 // ========== 사치 자원 관리 함수들 ==========
@@ -479,7 +654,7 @@ bool ASuperPlayerState::HasLuxuryResource(ELuxuryResource LuxuryResource) const
 void ASuperPlayerState::InitializePlayer()
 {
     // 모든 자원 초기화
-    FoodGauge = FResourceGauge(); // 기본값으로 초기화
+    Food = 0;
     Production = 5;
     Gold = 20;
     Science = 0;
@@ -496,11 +671,14 @@ void ASuperPlayerState::InitializePlayer()
     TotalScienceGained = 0;
     TotalFaithGained = 0;
     
+    // 플레이어 인덱스는 유지 (리셋 시 초기화하지 않음)
+    
     // 타일 초기화 (좌표 배열만 비우기)
     OwnedTileCoordinates.Empty();
     TotalOwnedTiles = 0;
     
     // 도시 관리 초기화
+    CityComponent = nullptr;
     bHasCity = false;
     CityCoordinate = FVector2D::ZeroVector;
     

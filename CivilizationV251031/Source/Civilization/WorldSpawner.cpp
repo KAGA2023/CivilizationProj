@@ -4,6 +4,9 @@
 #include "SuperGameInstance.h"
 #include "Unit/UnitManager.h"
 #include "City/CityActor.h"
+#include "SuperPlayerState.h"
+#include "Engine/World.h"
+#include "Kismet/GameplayStatics.h"
 
 AWorldSpawner::AWorldSpawner()
 {
@@ -256,5 +259,52 @@ void AWorldSpawner::ClearAllCities()
 		}
 	}
 	CityActors.Empty();
+}
+
+void AWorldSpawner::AssignCitiesToPlayers()
+{
+	// GameInstance에서 PlayerStates 가져오기
+	USuperGameInstance* GameInstance = nullptr;
+	if (UWorld* World = GetWorld())
+	{
+		GameInstance = Cast<USuperGameInstance>(World->GetGameInstance());
+	}
+	
+	if (!GameInstance || !WorldComponent)
+	{
+		return;
+	}
+	
+	// 도시 좌표 가져오기
+	TArray<FVector2D> CityHexes = WorldComponent->GetStartingCityHexes();
+	
+	// 각 플레이어에게 도시 배정 (순서대로)
+	for (int32 i = 0; i < CityHexes.Num(); i++)
+	{
+		// CityActor 가져오기
+		ACityActor* City = GetCityActorAtHex(CityHexes[i]);
+		if (!City || !City->CityComponent)
+		{
+			continue;
+		}
+		
+		// PlayerState 가져오기
+		ASuperPlayerState* PlayerState = GameInstance->GetPlayerState(i);
+		if (!PlayerState)
+		{
+			continue;
+		}
+		
+		// 도시 배정
+		PlayerState->SetCityComponent(City->CityComponent);
+		PlayerState->SetCityCoordinate(CityHexes[i]);
+		
+		// 도시 중심 반경 1칸의 타일들을 소유로 설정 (초기 도시 영역)
+		TArray<FVector2D> InitialTiles = WorldComponent->GetHexesInRadius(CityHexes[i], 1);
+		for (const FVector2D& TileCoord : InitialTiles)
+		{
+			PlayerState->AddOwnedTile(TileCoord, WorldComponent);
+		}
+	}
 }
 
