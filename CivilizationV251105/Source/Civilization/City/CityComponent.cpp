@@ -210,20 +210,6 @@ void UCityComponent::StartBuildingProduction(EBuildingType BuildingType)
 
 void UCityComponent::ChangeBuildingProduction(EBuildingType NewBuildingType)
 {
-    if (NewBuildingType == EBuildingType::None)
-    {
-        return;
-    }
-
-    // 이미 건설된 건물이면 생산 불가
-    if (HasBuilding(NewBuildingType))
-    {
-        return;
-    }
-
-    // 건물 데이터에서 비용 가져오기
-    FBuildingData BuildingData = GetBuildingData(NewBuildingType);
-    
     // 유닛 생산 상태 리셋 (건물 생산으로 전환하므로)
     m_CurrentStat.bIsProducingUnit = false;
     m_CurrentStat.ProducingUnitName = NAME_None;
@@ -232,12 +218,8 @@ void UCityComponent::ChangeBuildingProduction(EBuildingType NewBuildingType)
     m_CurrentStat.UnitFoodProgress = 0;
     m_CurrentStat.UnitFoodCost = 0;
     
-    // 건물 생산 설정 (진행도 초기화)
-    m_CurrentStat.CurrentlyProducing = NewBuildingType;
-    m_CurrentStat.ProductionProgress = 0;
-    m_CurrentStat.ProductionCost = BuildingData.ProductionCost;
-    m_CurrentStat.FoodProgress = 0;
-    m_CurrentStat.FoodCost = BuildingData.FoodCost;
+    // 건물 생산 시작 (StartBuildingProduction이 중복 코드를 처리)
+    StartBuildingProduction(NewBuildingType);
 }
 
 void UCityComponent::UpdateBuildingProductionProgress(int32 FoodAmount, int32 ProductionAmount)
@@ -324,23 +306,6 @@ void UCityComponent::StartUnitProduction(FName UnitName)
 
 void UCityComponent::ChangeUnitProduction(FName NewUnitName)
 {
-    if (NewUnitName == NAME_None)
-    {
-        return;
-    }
-
-    // 유닛 데이터에서 비용 가져오기
-    if (!UnitStatusTable)
-    {
-        LoadUnitStatusTable();
-    }
-
-    FUnitBaseStat* UnitStat = UnitStatusTable->FindRow<FUnitBaseStat>(NewUnitName, TEXT("ChangeUnitProduction"));
-    if (!UnitStat)
-    {
-        return;
-    }
-
     // 건물 생산 상태 리셋 (유닛 생산으로 전환하므로)
     m_CurrentStat.CurrentlyProducing = EBuildingType::None;
     m_CurrentStat.ProductionProgress = 0;
@@ -348,13 +313,8 @@ void UCityComponent::ChangeUnitProduction(FName NewUnitName)
     m_CurrentStat.FoodProgress = 0;
     m_CurrentStat.FoodCost = 0;
 
-    // 유닛 생산 설정 (진행도 초기화)
-    m_CurrentStat.bIsProducingUnit = true;
-    m_CurrentStat.ProducingUnitName = NewUnitName;
-    m_CurrentStat.UnitProductionProgress = 0;
-    m_CurrentStat.UnitProductionCost = UnitStat->ProductionCost;
-    m_CurrentStat.UnitFoodProgress = 0;
-    m_CurrentStat.UnitFoodCost = UnitStat->FoodCost;
+    // 유닛 생산 시작 (StartUnitProduction이 중복 코드를 처리)
+    StartUnitProduction(NewUnitName);
 }
 
 void UCityComponent::UpdateUnitProductionProgress(int32 FoodAmount, int32 ProductionAmount)
