@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataTable.h"
+#include "Engine/Texture2D.h"
 #include "CityStruct.generated.h"
 
 // 건물 타입 열거형
@@ -92,6 +93,10 @@ struct CIVILIZATION_API FBuildingData : public FTableRowBase
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Building Info")
     FString Description;                                                    // 건물 설명
 
+    // 아이콘 이미지
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Building Info")
+    TSoftObjectPtr<UTexture2D> BuildingIcon;                               // 건물 아이콘 이미지
+
     FBuildingData()
     {
         BuildingType = EBuildingType::None;
@@ -176,6 +181,12 @@ struct CIVILIZATION_API FCityCurrentStat
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Production")
     int32 ProductionCost = 0;                                              // 목표 생산 비용
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Production")
+    int32 FoodProgress = 0;                                                // 현재 식량 진행도
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Production")
+    int32 FoodCost = 0;                                                    // 목표 식량 비용
+
     // 유닛 생산 중
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Production")
     bool bIsProducingUnit = false;                                         // 유닛 생산 중인지
@@ -189,16 +200,26 @@ struct CIVILIZATION_API FCityCurrentStat
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Production")
     int32 UnitProductionCost = 0;                                          // 유닛 생산 비용
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Production")
+    int32 UnitFoodProgress = 0;                                            // 유닛 식량 진행도
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Production")
+    int32 UnitFoodCost = 0;                                                // 유닛 식량 비용
+
     FCityCurrentStat()
     {
         RemainingHealth = 0;
         CurrentlyProducing = EBuildingType::None;
         ProductionProgress = 0;
         ProductionCost = 0;
+        FoodProgress = 0;
+        FoodCost = 0;
         bIsProducingUnit = false;
         ProducingUnitName = NAME_None;
         UnitProductionProgress = 0;
         UnitProductionCost = 0;
+        UnitFoodProgress = 0;
+        UnitFoodCost = 0;
     }
 };
 

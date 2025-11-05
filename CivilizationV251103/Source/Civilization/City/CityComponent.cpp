@@ -2,6 +2,7 @@
 
 #include "CityComponent.h"
 #include "Engine/DataTable.h"
+#include "../Status/UnitStatusStruct.h"
 
 UCityComponent::UCityComponent()
 {
@@ -14,6 +15,7 @@ void UCityComponent::BeginPlay()
 
     // 데이터 테이블 로드
     LoadBuildingDataTable();
+    LoadUnitStatusTable();
 }
 
 void UCityComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -32,10 +34,14 @@ void UCityComponent::InitFromCityData(const FCityData& InCityData)
     m_CurrentStat.CurrentlyProducing = EBuildingType::None;
     m_CurrentStat.ProductionProgress = 0;
     m_CurrentStat.ProductionCost = 0;
+    m_CurrentStat.FoodProgress = 0;
+    m_CurrentStat.FoodCost = 0;
     m_CurrentStat.bIsProducingUnit = false;
     m_CurrentStat.ProducingUnitName = NAME_None;
     m_CurrentStat.UnitProductionProgress = 0;
     m_CurrentStat.UnitProductionCost = 0;
+    m_CurrentStat.UnitFoodProgress = 0;
+    m_CurrentStat.UnitFoodCost = 0;
 
     // 생산량 재계산
     RecalculateYields();
@@ -61,6 +67,13 @@ void UCityComponent::LoadBuildingDataTable()
     // SoftObjectPath를 사용한 로딩
     FSoftObjectPath BuildingDataTablePath(TEXT("/Game/Civilization/Data/DT_BuildingData.DT_BuildingData"));
     BuildingDataTable = Cast<UDataTable>(BuildingDataTablePath.TryLoad());
+}
+
+void UCityComponent::LoadUnitStatusTable()
+{
+    // SoftObjectPath를 사용한 로딩
+    FSoftObjectPath UnitStatusTablePath(TEXT("/Game/Civilization/Data/DT_UnitBaseStat.DT_UnitBaseStat"));
+    UnitStatusTable = Cast<UDataTable>(UnitStatusTablePath.TryLoad());
 }
 
 void UCityComponent::RecalculateYields()
@@ -172,37 +185,97 @@ int32 UCityComponent::GetFinalMaxHealth() const
     return m_FinalStat.MaxHealth;
 }
 
-void UCityComponent::StartBuildingProduction(EBuildingType BuildingType, int32 ProductionCost)
+void UCityComponent::StartBuildingProduction(EBuildingType BuildingType)
 {
     if (BuildingType == EBuildingType::None)
     {
         return;
     }
 
+    // 이미 건설된 건물이면 생산 불가
+    if (HasBuilding(BuildingType))
+    {
+        return;
+    }
+
+    // 건물 데이터에서 비용 가져오기
+    FBuildingData BuildingData = GetBuildingData(BuildingType);
+    
     m_CurrentStat.CurrentlyProducing = BuildingType;
     m_CurrentStat.ProductionProgress = 0;
-    m_CurrentStat.ProductionCost = ProductionCost;
+    m_CurrentStat.ProductionCost = BuildingData.ProductionCost;
+    m_CurrentStat.FoodProgress = 0;
+    m_CurrentStat.FoodCost = BuildingData.FoodCost;
 }
 
-void UCityComponent::UpdateBuildingProductionProgress(int32 Production)
+void UCityComponent::ChangeBuildingProduction(EBuildingType NewBuildingType)
+{
+    if (NewBuildingType == EBuildingType::None)
+    {
+        return;
+    }
+
+    // 이미 건설된 건물이면 생산 불가
+    if (HasBuilding(NewBuildingType))
+    {
+        return;
+    }
+
+    // 건물 데이터에서 비용 가져오기
+    FBuildingData BuildingData = GetBuildingData(NewBuildingType);
+    
+    // 유닛 생산 상태 리셋 (건물 생산으로 전환하므로)
+    m_CurrentStat.bIsProducingUnit = false;
+    m_CurrentStat.ProducingUnitName = NAME_None;
+    m_CurrentStat.UnitProductionProgress = 0;
+    m_CurrentStat.UnitProductionCost = 0;
+    m_CurrentStat.UnitFoodProgress = 0;
+    m_CurrentStat.UnitFoodCost = 0;
+    
+    // 건물 생산 설정 (진행도 초기화)
+    m_CurrentStat.CurrentlyProducing = NewBuildingType;
+    m_CurrentStat.ProductionProgress = 0;
+    m_CurrentStat.ProductionCost = BuildingData.ProductionCost;
+    m_CurrentStat.FoodProgress = 0;
+    m_CurrentStat.FoodCost = BuildingData.FoodCost;
+}
+
+void UCityComponent::UpdateBuildingProductionProgress(int32 FoodAmount, int32 ProductionAmount)
 {
     if (m_CurrentStat.CurrentlyProducing == EBuildingType::None)
     {
         return;
     }
 
-    m_CurrentStat.ProductionProgress += Production;
-}
+    // 진행도 업데이트 (목표치를 넘지 않도록)
+    if (m_CurrentStat.FoodCost > 0)
+    {
+        m_CurrentStat.FoodProgress += FoodAmount;
+        m_CurrentStat.FoodProgress = FMath::Min(m_CurrentStat.FoodProgress, m_CurrentStat.FoodCost);
+    }
+    
+    if (m_CurrentStat.ProductionCost > 0)
+    {
+        m_CurrentStat.ProductionProgress += ProductionAmount;
+        m_CurrentStat.ProductionProgress = FMath::Min(m_CurrentStat.ProductionProgress, m_CurrentStat.ProductionCost);
+    }
 
-bool UCityComponent::CanCompleteBuildingProduction() const
-{
-    return m_CurrentStat.CurrentlyProducing != EBuildingType::None &&
-           m_CurrentStat.ProductionProgress >= m_CurrentStat.ProductionCost;
+    // 완료 조건 확인 및 완료 처리
+    CompleteBuildingProduction();
 }
 
 EBuildingType UCityComponent::CompleteBuildingProduction()
 {
-    if (!CanCompleteBuildingProduction())
+    if (m_CurrentStat.CurrentlyProducing == EBuildingType::None)
+    {
+        return EBuildingType::None;
+    }
+
+    // 완료 조건 확인
+    bool bFoodComplete = (m_CurrentStat.FoodCost <= 0 || m_CurrentStat.FoodProgress >= m_CurrentStat.FoodCost);
+    bool bProductionComplete = (m_CurrentStat.ProductionCost <= 0 || m_CurrentStat.ProductionProgress >= m_CurrentStat.ProductionCost);
+
+    if (!bFoodComplete || !bProductionComplete)
     {
         return EBuildingType::None;
     }
@@ -216,13 +289,27 @@ EBuildingType UCityComponent::CompleteBuildingProduction()
     m_CurrentStat.CurrentlyProducing = EBuildingType::None;
     m_CurrentStat.ProductionProgress = 0;
     m_CurrentStat.ProductionCost = 0;
+    m_CurrentStat.FoodProgress = 0;
+    m_CurrentStat.FoodCost = 0;
 
     return CompletedBuilding;
 }
 
-void UCityComponent::StartUnitProduction(FName UnitName, int32 ProductionCost)
+void UCityComponent::StartUnitProduction(FName UnitName)
 {
     if (UnitName == NAME_None)
+    {
+        return;
+    }
+
+    // 유닛 데이터에서 비용 가져오기
+    if (!UnitStatusTable)
+    {
+        LoadUnitStatusTable();
+    }
+
+    FUnitBaseStat* UnitStat = UnitStatusTable->FindRow<FUnitBaseStat>(UnitName, TEXT("StartUnitProduction"));
+    if (!UnitStat)
     {
         return;
     }
@@ -230,28 +317,82 @@ void UCityComponent::StartUnitProduction(FName UnitName, int32 ProductionCost)
     m_CurrentStat.bIsProducingUnit = true;
     m_CurrentStat.ProducingUnitName = UnitName;
     m_CurrentStat.UnitProductionProgress = 0;
-    m_CurrentStat.UnitProductionCost = ProductionCost;
+    m_CurrentStat.UnitProductionCost = UnitStat->ProductionCost;
+    m_CurrentStat.UnitFoodProgress = 0;
+    m_CurrentStat.UnitFoodCost = UnitStat->FoodCost;
 }
 
-void UCityComponent::UpdateUnitProductionProgress(int32 Production)
+void UCityComponent::ChangeUnitProduction(FName NewUnitName)
+{
+    if (NewUnitName == NAME_None)
+    {
+        return;
+    }
+
+    // 유닛 데이터에서 비용 가져오기
+    if (!UnitStatusTable)
+    {
+        LoadUnitStatusTable();
+    }
+
+    FUnitBaseStat* UnitStat = UnitStatusTable->FindRow<FUnitBaseStat>(NewUnitName, TEXT("ChangeUnitProduction"));
+    if (!UnitStat)
+    {
+        return;
+    }
+
+    // 건물 생산 상태 리셋 (유닛 생산으로 전환하므로)
+    m_CurrentStat.CurrentlyProducing = EBuildingType::None;
+    m_CurrentStat.ProductionProgress = 0;
+    m_CurrentStat.ProductionCost = 0;
+    m_CurrentStat.FoodProgress = 0;
+    m_CurrentStat.FoodCost = 0;
+
+    // 유닛 생산 설정 (진행도 초기화)
+    m_CurrentStat.bIsProducingUnit = true;
+    m_CurrentStat.ProducingUnitName = NewUnitName;
+    m_CurrentStat.UnitProductionProgress = 0;
+    m_CurrentStat.UnitProductionCost = UnitStat->ProductionCost;
+    m_CurrentStat.UnitFoodProgress = 0;
+    m_CurrentStat.UnitFoodCost = UnitStat->FoodCost;
+}
+
+void UCityComponent::UpdateUnitProductionProgress(int32 FoodAmount, int32 ProductionAmount)
 {
     if (!m_CurrentStat.bIsProducingUnit)
     {
         return;
     }
 
-    m_CurrentStat.UnitProductionProgress += Production;
-}
+    // 진행도 업데이트 (목표치를 넘지 않도록)
+    if (m_CurrentStat.UnitFoodCost > 0)
+    {
+        m_CurrentStat.UnitFoodProgress += FoodAmount;
+        m_CurrentStat.UnitFoodProgress = FMath::Min(m_CurrentStat.UnitFoodProgress, m_CurrentStat.UnitFoodCost);
+    }
+    
+    if (m_CurrentStat.UnitProductionCost > 0)
+    {
+        m_CurrentStat.UnitProductionProgress += ProductionAmount;
+        m_CurrentStat.UnitProductionProgress = FMath::Min(m_CurrentStat.UnitProductionProgress, m_CurrentStat.UnitProductionCost);
+    }
 
-bool UCityComponent::CanCompleteUnitProduction() const
-{
-    return m_CurrentStat.bIsProducingUnit &&
-           m_CurrentStat.UnitProductionProgress >= m_CurrentStat.UnitProductionCost;
+    // 완료 조건 확인 및 완료 처리
+    CompleteUnitProduction();
 }
 
 FName UCityComponent::CompleteUnitProduction()
 {
-    if (!CanCompleteUnitProduction())
+    if (!m_CurrentStat.bIsProducingUnit)
+    {
+        return NAME_None;
+    }
+
+    // 완료 조건 확인
+    bool bFoodComplete = (m_CurrentStat.UnitFoodCost <= 0 || m_CurrentStat.UnitFoodProgress >= m_CurrentStat.UnitFoodCost);
+    bool bProductionComplete = (m_CurrentStat.UnitProductionCost <= 0 || m_CurrentStat.UnitProductionProgress >= m_CurrentStat.UnitProductionCost);
+
+    if (!bFoodComplete || !bProductionComplete)
     {
         return NAME_None;
     }
@@ -263,6 +404,8 @@ FName UCityComponent::CompleteUnitProduction()
     m_CurrentStat.ProducingUnitName = NAME_None;
     m_CurrentStat.UnitProductionProgress = 0;
     m_CurrentStat.UnitProductionCost = 0;
+    m_CurrentStat.UnitFoodProgress = 0;
+    m_CurrentStat.UnitFoodCost = 0;
 
     return CompletedUnitName;
 }

@@ -82,7 +82,7 @@ public:
 
     // 유닛 소환 관련 함수들
     UFUNCTION(BlueprintCallable, Category = "Unit Spawning")
-    class AUnitCharacterBase* SpawnUnitAtHex(FVector2D HexPosition, const FName& RowName); // 지정된 육각형 좌표에 유닛 소환
+    class AUnitCharacterBase* SpawnUnitAtHex(FVector2D HexPosition, const FName& RowName, int32 PlayerIndex = -1); // 지정된 육각형 좌표에 유닛 소환 (PlayerIndex로 소유 플레이어 지정)
 
     // 유닛 관리 함수들
     UFUNCTION(BlueprintCallable, Category = "Unit Management")

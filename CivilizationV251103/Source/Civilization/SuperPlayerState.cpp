@@ -3,6 +3,8 @@
 #include "SuperPlayerState.h"
 #include "WorldComponent.h"
 #include "City/CityComponent.h"
+#include "Unit/UnitCharacterBase.h"
+#include "Unit/UnitManager.h"
 #include "Engine/World.h"
 #include "SuperGameInstance.h"
 
@@ -37,6 +39,9 @@ ASuperPlayerState::ASuperPlayerState()
     CityComponent = nullptr;
     bHasCity = false;
     CityCoordinate = FVector2D::ZeroVector;
+
+    // 유닛 관리 초기화
+    OwnedUnits.Empty();
 
     // 사치 자원 관리 초기화
     OwnedLuxuryResources.Empty();
@@ -266,15 +271,48 @@ void ASuperPlayerState::ProcessTurnResources()
     int32 TurnFaith = CalculateTotalFaithYield(WorldComponent);
     
     // 도시 생산량 추가
-    TurnFood += GetCityFoodYield();
-    TurnProduction += GetCityProductionYield();
-    TurnGold += GetCityGoldYield();
-    TurnScience += GetCityScienceYield();
-    TurnFaith += GetCityFaithYield();
+    if (CityComponent)
+    {
+        TurnFood += CityComponent->GetFinalFoodYield();
+        TurnProduction += CityComponent->GetFinalProductionYield();
+        TurnGold += CityComponent->GetFinalGoldYield();
+        TurnScience += CityComponent->GetFinalScienceYield();
+        TurnFaith += CityComponent->GetFinalFaithYield();
+
+        // 도시 건물 생산 진행도 업데이트 (식량과 생산력은 즉시 소비)
+        CityComponent->UpdateBuildingProductionProgress(TurnFood, TurnProduction);
+
+        // 도시 유닛 생산 진행도 업데이트 (식량과 생산력은 즉시 소비)
+        CityComponent->UpdateUnitProductionProgress(TurnFood, TurnProduction);
+        
+        // 유닛 생산 완료 확인 및 유닛 소환
+        FName CompletedUnitName = CityComponent->CompleteUnitProduction();
+        if (CompletedUnitName != NAME_None)
+        {
+            // 유닛 생산 완료 - 도시 좌표에 직접 소환
+            if (UWorld* World = GetWorld())
+            {
+                if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
+                {
+                    if (UUnitManager* UnitManager = SuperGameInst->GetUnitManager())
+                    {
+                        // 도시 좌표에 직접 유닛 소환 (PlayerIndex 전달)
+                        UnitManager->SpawnUnitAtHex(CityCoordinate, CompletedUnitName, PlayerIndex);
+                    }
+                }
+            }
+        }
+    }
     
-    // 자원 추가
-    AddFood(TurnFood);
-    AddProduction(TurnProduction);
+    // 자원 추가 (식량과 생산력은 건물/유닛 생산에 사용했으므로 추가하지 않음, 생산 중이 아닐 때만 추가)
+    if (!CityComponent || 
+        (CityComponent->GetCurrentStat().CurrentlyProducing == EBuildingType::None && 
+         !CityComponent->GetCurrentStat().bIsProducingUnit))
+    {
+        AddFood(TurnFood);
+        AddProduction(TurnProduction);
+    }
+    
     AddGold(TurnGold);
     AddScience(TurnScience);
     AddFaith(TurnFaith);
@@ -409,50 +447,135 @@ void ASuperPlayerState::RemoveCity()
     bHasCity = false;
 }
 
-// ========== 도시 생산량 함수들 ==========
-int32 ASuperPlayerState::GetCityFoodYield() const
+// ========== 유닛 관리 함수들 ==========
+void ASuperPlayerState::AddOwnedUnit(AUnitCharacterBase* Unit)
 {
-    if (!CityComponent)
+    if (Unit && !OwnedUnits.Contains(Unit))
     {
-        return 0;
+        OwnedUnits.Add(Unit);
     }
-    return CityComponent->GetFinalFoodYield();
 }
 
-int32 ASuperPlayerState::GetCityProductionYield() const
+void ASuperPlayerState::RemoveOwnedUnit(AUnitCharacterBase* Unit)
 {
-    if (!CityComponent)
+    if (Unit)
     {
-        return 0;
+        OwnedUnits.Remove(Unit);
     }
-    return CityComponent->GetFinalProductionYield();
 }
 
-int32 ASuperPlayerState::GetCityGoldYield() const
+void ASuperPlayerState::ClearAllOwnedUnits()
 {
-    if (!CityComponent)
-    {
-        return 0;
-    }
-    return CityComponent->GetFinalGoldYield();
+    OwnedUnits.Empty();
 }
 
-int32 ASuperPlayerState::GetCityScienceYield() const
+// ========== 도시 건물 생산 함수들 ==========
+bool ASuperPlayerState::StartBuildingProduction(EBuildingType BuildingType)
 {
+    // 도시가 없으면 실패
     if (!CityComponent)
     {
-        return 0;
+        return false;
     }
-    return CityComponent->GetFinalScienceYield();
+
+    // 이미 생산 중이면 실패 (건물 또는 유닛)
+    if (CityComponent->GetCurrentStat().CurrentlyProducing != EBuildingType::None ||
+        CityComponent->GetCurrentStat().bIsProducingUnit)
+    {
+        return false;
+    }
+
+    // 건물 생산 시작
+    CityComponent->StartBuildingProduction(BuildingType);
+    return true;
 }
 
-int32 ASuperPlayerState::GetCityFaithYield() const
+bool ASuperPlayerState::ChangeBuildingProduction(EBuildingType NewBuildingType)
 {
+    // 도시가 없으면 실패
     if (!CityComponent)
     {
-        return 0;
+        return false;
     }
-    return CityComponent->GetFinalFaithYield();
+
+    // 생산 중이 아니면 실패 (변경할 생산이 없음)
+    // 건물 생산 중이거나 유닛 생산 중이어야 함
+    if (CityComponent->GetCurrentStat().CurrentlyProducing == EBuildingType::None &&
+        !CityComponent->GetCurrentStat().bIsProducingUnit)
+    {
+        return false;
+    }
+
+    // 건물 생산 중이고 같은 건물로 변경하려는 경우 실패
+    if (CityComponent->GetCurrentStat().CurrentlyProducing == NewBuildingType)
+    {
+        return false;
+    }
+
+    // 건물 생산 변경 (진행도 초기화, 유닛 생산 상태도 리셋)
+    CityComponent->ChangeBuildingProduction(NewBuildingType);
+    return true;
+}
+
+// ========== 도시 유닛 생산 함수들 ==========
+bool ASuperPlayerState::StartUnitProduction(FName UnitName)
+{
+    // 도시가 없으면 실패
+    if (!CityComponent)
+    {
+        return false;
+    }
+
+    // 인구 제한 체크: Population이 LimitPopulation 이상이면 유닛 생산 불가
+    if (Population >= LimitPopulation)
+    {
+        return false;
+    }
+
+    // 이미 생산 중이면 실패 (건물 또는 유닛)
+    if (CityComponent->GetCurrentStat().CurrentlyProducing != EBuildingType::None ||
+        CityComponent->GetCurrentStat().bIsProducingUnit)
+    {
+        return false;
+    }
+
+    // 유닛 생산 시작
+    CityComponent->StartUnitProduction(UnitName);
+    return true;
+}
+
+bool ASuperPlayerState::ChangeUnitProduction(FName NewUnitName)
+{
+    // 도시가 없으면 실패
+    if (!CityComponent)
+    {
+        return false;
+    }
+
+    // 인구 제한 체크: Population이 LimitPopulation 이상이면 유닛 생산 불가
+    if (Population >= LimitPopulation)
+    {
+        return false;
+    }
+
+    // 생산 중이 아니면 실패 (변경할 생산이 없음)
+    // 건물 생산 중이거나 유닛 생산 중이어야 함
+    if (CityComponent->GetCurrentStat().CurrentlyProducing == EBuildingType::None &&
+        !CityComponent->GetCurrentStat().bIsProducingUnit)
+    {
+        return false;
+    }
+
+    // 유닛 생산 중이고 같은 유닛으로 변경하려는 경우 실패
+    if (CityComponent->GetCurrentStat().bIsProducingUnit &&
+        CityComponent->GetCurrentStat().ProducingUnitName == NewUnitName)
+    {
+        return false;
+    }
+
+    // 유닛 생산 변경 (진행도 초기화, 건물 생산 상태도 리셋)
+    CityComponent->ChangeUnitProduction(NewUnitName);
+    return true;
 }
 
 // ========== 도시 건물 구매 함수들 ==========

@@ -28,13 +28,13 @@ public:
     int32 Production = 0; // 생산량 (유닛 건설용)
 
     UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Resources")
-    int32 Gold = 10000; // 골드 (범용 구매용)
+    int32 Gold = 0; // 골드 (범용 구매용)
 
     UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Resources")
     int32 Science = 0; // 과학 (기술 연구용)
 
     UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Resources")
-    int32 Faith = 10000; // 신앙 (전투력 추가)
+    int32 Faith = 0; // 신앙 (전투력 추가)
 
     // ========== 플레이어 인덱스 ==========
     UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Player Info")
@@ -57,12 +57,16 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "City Management")
     bool bHasCity = false; // 도시 보유 여부
 
+    // ========== 유닛 관리 시스템 ==========
+    UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Unit Management")
+    TArray<class AUnitCharacterBase*> OwnedUnits; // 이 플레이어가 소유한 유닛들
+
     // ========== 게임 진행 시스템 ==========
     UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Game Progress")
-    int32 Population = 1; // 총 인구 수
+    int32 Population = 1; // 총 유닛 수
 
     UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Game Progress")
-    int32 LimitPopulation = 4; // 제한 인구 수
+    int32 LimitPopulation = 4; // 제한 유닛 수
 
     // ========== 사치 자원 관리 시스템 ==========
     UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Luxury Resources")
@@ -180,21 +184,35 @@ public:
     UFUNCTION(BlueprintCallable, Category = "City Management")
     void RemoveCity(); // 도시 제거
 
-    // ========== 도시 생산량 함수들 ==========
-    UFUNCTION(BlueprintCallable, Category = "City Yields")
-    int32 GetCityFoodYield() const; // 도시 식량 생산량 반환
+    // ========== 유닛 관리 함수들 ==========
+    UFUNCTION(BlueprintCallable, Category = "Unit Management")
+    void AddOwnedUnit(class AUnitCharacterBase* Unit); // 소유 유닛 추가
 
-    UFUNCTION(BlueprintCallable, Category = "City Yields")
-    int32 GetCityProductionYield() const; // 도시 생산량 반환
+    UFUNCTION(BlueprintCallable, Category = "Unit Management")
+    void RemoveOwnedUnit(class AUnitCharacterBase* Unit); // 소유 유닛 제거
 
-    UFUNCTION(BlueprintCallable, Category = "City Yields")
-    int32 GetCityGoldYield() const; // 도시 골드 생산량 반환
+    UFUNCTION(BlueprintCallable, Category = "Unit Management")
+    TArray<class AUnitCharacterBase*> GetOwnedUnits() const { return OwnedUnits; } // 소유 유닛 목록 반환
 
-    UFUNCTION(BlueprintCallable, Category = "City Yields")
-    int32 GetCityScienceYield() const; // 도시 과학 생산량 반환
+    UFUNCTION(BlueprintCallable, Category = "Unit Management")
+    int32 GetOwnedUnitCount() const { return OwnedUnits.Num(); } // 소유 유닛 수 반환
 
-    UFUNCTION(BlueprintCallable, Category = "City Yields")
-    int32 GetCityFaithYield() const; // 도시 신앙 생산량 반환
+    UFUNCTION(BlueprintCallable, Category = "Unit Management")
+    void ClearAllOwnedUnits(); // 모든 소유 유닛 제거
+
+    // ========== 도시 건물 생산 함수들 ==========
+    UFUNCTION(BlueprintCallable, Category = "City Building Production")
+    bool StartBuildingProduction(EBuildingType BuildingType); // 건물 생산 시작
+
+    UFUNCTION(BlueprintCallable, Category = "City Building Production")
+    bool ChangeBuildingProduction(EBuildingType NewBuildingType); // 건물 생산 변경 (진행도 초기화)
+
+    // ========== 도시 유닛 생산 함수들 ==========
+    UFUNCTION(BlueprintCallable, Category = "City Unit Production")
+    bool StartUnitProduction(FName UnitName); // 유닛 생산 시작
+
+    UFUNCTION(BlueprintCallable, Category = "City Unit Production")
+    bool ChangeUnitProduction(FName NewUnitName); // 유닛 생산 변경 (진행도 초기화)
 
     // ========== 도시 건물 구매 함수들 ==========
     UFUNCTION(BlueprintCallable, Category = "City Building Purchase")

@@ -32,6 +32,10 @@ protected:
     UPROPERTY()
     UDataTable* UnitStatusTable = nullptr;
 
+    // ========== 플레이어 소유 정보 ==========
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Player Ownership")
+    int32 PlayerIndex = -1; // 이 유닛을 소유한 플레이어 인덱스
+
 protected:
     virtual void BeginPlay() override;
 
@@ -43,6 +47,13 @@ public:
     // 상태 컴포넌트 접근
     UFUNCTION(BlueprintCallable, Category = "Unit Status")
     UUnitStatusComponent* GetUnitStatusComponent() const { return UnitStatusComponent; }
+
+    // 플레이어 소유 정보 접근
+    UFUNCTION(BlueprintCallable, Category = "Player Ownership")
+    int32 GetPlayerIndex() const { return PlayerIndex; }
+
+    UFUNCTION(BlueprintCallable, Category = "Player Ownership")
+    void SetPlayerIndex(int32 InPlayerIndex) { PlayerIndex = InPlayerIndex; }
 
 protected:
     // 내부 함수들

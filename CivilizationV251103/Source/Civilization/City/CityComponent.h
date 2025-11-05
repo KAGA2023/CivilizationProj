@@ -75,26 +75,26 @@ public:
 
     // 생산 시스템 - 건물
     UFUNCTION(BlueprintCallable, Category = "Building Production")
-    void StartBuildingProduction(EBuildingType BuildingType, int32 ProductionCost);
+    void StartBuildingProduction(EBuildingType BuildingType);
 
     UFUNCTION(BlueprintCallable, Category = "Building Production")
-    void UpdateBuildingProductionProgress(int32 Production);
+    void ChangeBuildingProduction(EBuildingType NewBuildingType); // 건물 생산 변경 (진행도 초기화)
 
     UFUNCTION(BlueprintCallable, Category = "Building Production")
-    bool CanCompleteBuildingProduction() const;
+    void UpdateBuildingProductionProgress(int32 FoodAmount, int32 ProductionAmount);
 
     UFUNCTION(BlueprintCallable, Category = "Building Production")
     EBuildingType CompleteBuildingProduction();
 
     // 생산 시스템 - 유닛
     UFUNCTION(BlueprintCallable, Category = "Unit Production")
-    void StartUnitProduction(FName UnitName, int32 ProductionCost);
+    void StartUnitProduction(FName UnitName);
 
     UFUNCTION(BlueprintCallable, Category = "Unit Production")
-    void UpdateUnitProductionProgress(int32 Production);
+    void ChangeUnitProduction(FName NewUnitName); // 유닛 생산 변경 (진행도 초기화)
 
     UFUNCTION(BlueprintCallable, Category = "Unit Production")
-    bool CanCompleteUnitProduction() const;
+    void UpdateUnitProductionProgress(int32 FoodAmount, int32 ProductionAmount);
 
     UFUNCTION(BlueprintCallable, Category = "Unit Production")
     FName CompleteUnitProduction();
@@ -132,8 +132,13 @@ protected:
     UPROPERTY()
     UDataTable* BuildingDataTable = nullptr;
 
+    // 유닛 스테이터스 데이터 테이블
+    UPROPERTY()
+    UDataTable* UnitStatusTable = nullptr;
+
     // 내부 함수들
     void LoadBuildingDataTable();
+    void LoadUnitStatusTable();
     void RecalculateYields();
     FBuildingData GetBuildingDataFromTable(EBuildingType BuildingType) const;
 };

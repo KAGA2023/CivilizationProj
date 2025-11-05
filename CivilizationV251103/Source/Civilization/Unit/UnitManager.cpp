@@ -5,6 +5,7 @@
 #include "../Status/UnitStatusComponent.h"
 #include "../WorldComponent.h"
 #include "../SuperGameInstance.h"
+#include "../SuperPlayerState.h"
 #include "Engine/Engine.h"
 
 UUnitManager::UUnitManager()
@@ -22,7 +23,7 @@ void UUnitManager::TickComponent(float DeltaTime, ELevelTick TickType, FActorCom
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 }
 
-AUnitCharacterBase* UUnitManager::SpawnUnitAtHex(FVector2D HexPosition, const FName& RowName)
+AUnitCharacterBase* UUnitManager::SpawnUnitAtHex(FVector2D HexPosition, const FName& RowName, int32 PlayerIndex)
 {
     // WorldComponent가 설정되어 있는지 확인
     if (!WorldComponent)
@@ -92,12 +93,26 @@ AUnitCharacterBase* UUnitManager::SpawnUnitAtHex(FVector2D HexPosition, const FN
     // 유닛 초기화
     NewUnit->InitializeUnit(RowName);
 
+    // 플레이어 인덱스 설정
+    NewUnit->SetPlayerIndex(PlayerIndex);
+
     // 유닛 위치 등록
     SetUnitAtHex(HexPosition, NewUnit);
 
     // 소환된 유닛 목록에 추가
     SpawnedUnits.Add(NewUnit);
 
+    // 플레이어 스테이트에 유닛 추가 (PlayerIndex가 유효한 경우)
+    if (PlayerIndex >= 0)
+    {
+        if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
+        {
+            if (ASuperPlayerState* PlayerState = SuperGameInst->GetPlayerState(PlayerIndex))
+            {
+                PlayerState->AddOwnedUnit(NewUnit);
+            }
+        }
+    }
 
     return NewUnit;
 }
@@ -111,6 +126,22 @@ void UUnitManager::RemoveUnit(AUnitCharacterBase* Unit)
 {
     if (Unit && SpawnedUnits.Contains(Unit))
     {
+        // 플레이어 스테이트에서 유닛 제거
+        int32 UnitPlayerIndex = Unit->GetPlayerIndex();
+        if (UnitPlayerIndex >= 0)
+        {
+            if (UWorld* World = GetWorld())
+            {
+                if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
+                {
+                    if (ASuperPlayerState* PlayerState = SuperGameInst->GetPlayerState(UnitPlayerIndex))
+                    {
+                        PlayerState->RemoveOwnedUnit(Unit);
+                    }
+                }
+            }
+        }
+
         // 유닛의 현재 위치를 찾아서 제거
         if (WorldComponent)
         {
@@ -126,6 +157,28 @@ void UUnitManager::RemoveUnit(AUnitCharacterBase* Unit)
 
 void UUnitManager::ClearAllUnits()
 {
+    // 모든 플레이어 스테이트에서 유닛 제거
+    if (UWorld* World = GetWorld())
+    {
+        if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
+        {
+            for (AUnitCharacterBase* Unit : SpawnedUnits)
+            {
+                if (Unit)
+                {
+                    int32 UnitPlayerIndex = Unit->GetPlayerIndex();
+                    if (UnitPlayerIndex >= 0)
+                    {
+                        if (ASuperPlayerState* PlayerState = SuperGameInst->GetPlayerState(UnitPlayerIndex))
+                        {
+                            PlayerState->RemoveOwnedUnit(Unit);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // 모든 유닛 위치 제거
     if (WorldComponent)
     {
