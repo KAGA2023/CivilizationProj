@@ -72,22 +72,6 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Luxury Resources")
     TMap<ELuxuryResource, int32> OwnedLuxuryResources; // 보유한 사치 자원 종류와 개수
 
-    // ========== 통계 정보 ==========
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Statistics")
-    int32 TotalFoodProduced = 0; // 누적 식량 생산량
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Statistics")
-    int32 TotalProductionProduced = 0; // 누적 생산량
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Statistics")
-    int32 TotalGoldEarned = 0; // 누적 골드 획득량
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Statistics")
-    int32 TotalScienceGained = 0; // 누적 과학 획득량
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Statistics")
-    int32 TotalFaithGained = 0; // 누적 신앙 획득량
-
 protected:
     virtual void BeginPlay() override;
 

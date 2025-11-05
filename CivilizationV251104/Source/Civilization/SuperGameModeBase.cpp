@@ -33,8 +33,8 @@ void ASuperGameModeBase::BeginPlay()
 {
 	Super::BeginPlay();
 	
-	// 모든 플레이어 스테이트 생성 (AI 3개)
-	CreateAIPlayerStates();
+	// 모든 플레이어 스테이트 생성 (Player 0 + AI 1~3, 총 4개)
+	CreateAllPlayerStates();
 	
 	// 게임 초기화
 	InitializeGame();
@@ -232,21 +232,20 @@ void ASuperGameModeBase::PostLogin(APlayerController* NewPlayer)
 {
 	Super::PostLogin(NewPlayer);
 	
-	// PlayerState는 PostLogin 이후에 생성됨
-	if (ASuperPlayerState* PlayerState = Cast<ASuperPlayerState>(NewPlayer->PlayerState))
+	// GameInstance에서 미리 생성한 PlayerState 0을 가져와서 사용
+	if (USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance()))
 	{
-		// PlayerIndex 0으로 설정 (실제 플레이어)
-		PlayerState->PlayerIndex = 0;
-		
-		// GameInstance에 등록
-		if (USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance()))
+		// PlayerIndex 0인 PlayerState 가져오기 (실제 플레이어용)
+		ASuperPlayerState* PlayerState0 = GameInstance->GetPlayerState(0);
+		if (PlayerState0)
 		{
-			GameInstance->AddPlayerState(PlayerState);
+			// PlayerController의 PlayerState를 GameInstance의 것으로 교체
+			NewPlayer->PlayerState = PlayerState0;
 		}
 	}
 }
 
-void ASuperGameModeBase::CreateAIPlayerStates()
+void ASuperGameModeBase::CreateAllPlayerStates()
 {
 	// GameInstance 가져오기
 	USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance());
@@ -255,8 +254,8 @@ void ASuperGameModeBase::CreateAIPlayerStates()
 		return;
 	}
 	
-	// AI PlayerState 3개 생성 (Player 1~3)
-	for (int32 i = 1; i <= 3; i++)
+	// 모든 PlayerState 생성 (PlayerIndex 0~3: 0=플레이어, 1~3=AI)
+	for (int32 i = 0; i <= 3; i++)
 	{
 		// PlayerState 수동 생성
 		FActorSpawnParameters SpawnParams;

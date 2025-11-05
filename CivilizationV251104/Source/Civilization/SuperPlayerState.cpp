@@ -21,13 +21,6 @@ ASuperPlayerState::ASuperPlayerState()
     Population = 1;
     LimitPopulation = 4;
 
-    // 통계 초기화
-    TotalFoodProduced = 0;
-    TotalProductionProduced = 0;
-    TotalGoldEarned = 0;
-    TotalScienceGained = 0;
-    TotalFaithGained = 0;
-
     // 플레이어 인덱스 초기화
     PlayerIndex = -1;
 
@@ -61,7 +54,6 @@ void ASuperPlayerState::AddFood(int32 Amount)
     if (Amount > 0)
     {
         Food += Amount;
-        TotalFoodProduced += Amount;
     }
 }
 
@@ -70,7 +62,6 @@ void ASuperPlayerState::AddProduction(int32 Amount)
     if (Amount > 0)
     {
         Production += Amount;
-        TotalProductionProduced += Amount;
     }
 }
 
@@ -79,7 +70,6 @@ void ASuperPlayerState::AddGold(int32 Amount)
     if (Amount > 0)
     {
         Gold += Amount;
-        TotalGoldEarned += Amount;
     }
 }
 
@@ -88,7 +78,6 @@ void ASuperPlayerState::AddScience(int32 Amount)
     if (Amount > 0)
     {
         Science += Amount;
-        TotalScienceGained += Amount;
     }
 }
 
@@ -97,7 +86,6 @@ void ASuperPlayerState::AddFaith(int32 Amount)
     if (Amount > 0)
     {
         Faith += Amount;
-        TotalFaithGained += Amount;
     }
 }
 
@@ -786,13 +774,6 @@ void ASuperPlayerState::InitializePlayer()
     // 게임 진행 초기화
     Population = 1;
     LimitPopulation = 4;
-    
-    // 통계 초기화
-    TotalFoodProduced = 0;
-    TotalProductionProduced = 0;
-    TotalGoldEarned = 0;
-    TotalScienceGained = 0;
-    TotalFaithGained = 0;
     
     // 플레이어 인덱스는 유지 (리셋 시 초기화하지 않음)
     
