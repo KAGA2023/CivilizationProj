@@ -11,9 +11,7 @@ bool FUnitStatModifier::operator==(const FUnitStatModifier& Other) const
            AddMovementPoints == Other.AddMovementPoints &&
            AddSightRange == Other.AddSightRange &&
            AddRange == Other.AddRange &&
-           AddProductionCost == Other.AddProductionCost &&
            AddGoldCost == Other.AddGoldCost &&
-           AddFaithCost == Other.AddFaithCost &&
            AddFoodCost == Other.AddFoodCost;
 }
 
@@ -26,9 +24,7 @@ FUnitStatModifier FUnitStatModifier::operator+(const FUnitStatModifier& Other) c
     Result.AddMovementPoints = AddMovementPoints + Other.AddMovementPoints;
     Result.AddSightRange = AddSightRange + Other.AddSightRange;
     Result.AddRange = AddRange + Other.AddRange;
-    Result.AddProductionCost = AddProductionCost + Other.AddProductionCost;
     Result.AddGoldCost = AddGoldCost + Other.AddGoldCost;
-    Result.AddFaithCost = AddFaithCost + Other.AddFaithCost;
     Result.AddFoodCost = AddFoodCost + Other.AddFoodCost;
     return Result;
 }
@@ -42,9 +38,7 @@ FUnitStatModifier FUnitStatModifier::operator-(const FUnitStatModifier& Other) c
     Result.AddMovementPoints = AddMovementPoints - Other.AddMovementPoints;
     Result.AddSightRange = AddSightRange - Other.AddSightRange;
     Result.AddRange = AddRange - Other.AddRange;
-    Result.AddProductionCost = AddProductionCost - Other.AddProductionCost;
     Result.AddGoldCost = AddGoldCost - Other.AddGoldCost;
-    Result.AddFaithCost = AddFaithCost - Other.AddFaithCost;
     Result.AddFoodCost = AddFoodCost - Other.AddFoodCost;
     return Result;
 }
@@ -57,9 +51,7 @@ void FUnitStatModifier::operator+=(const FUnitStatModifier& Other)
     AddMovementPoints += Other.AddMovementPoints;
     AddSightRange += Other.AddSightRange;
     AddRange += Other.AddRange;
-    AddProductionCost += Other.AddProductionCost;
     AddGoldCost += Other.AddGoldCost;
-    AddFaithCost += Other.AddFaithCost;
     AddFoodCost += Other.AddFoodCost;
 }
 
@@ -71,9 +63,7 @@ void FUnitStatModifier::operator-=(const FUnitStatModifier& Other)
     AddMovementPoints -= Other.AddMovementPoints;
     AddSightRange -= Other.AddSightRange;
     AddRange -= Other.AddRange;
-    AddProductionCost -= Other.AddProductionCost;
     AddGoldCost -= Other.AddGoldCost;
-    AddFaithCost -= Other.AddFaithCost;
     AddFoodCost -= Other.AddFoodCost;
 }
 
@@ -85,8 +75,6 @@ void FUnitStatModifier::Reset()
     AddMovementPoints = 0;
     AddSightRange = 0;
     AddRange = 0;
-    AddProductionCost = 0;
     AddGoldCost = 0;
-    AddFaithCost = 0;
     AddFoodCost = 0;
 }

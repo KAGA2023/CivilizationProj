@@ -196,8 +196,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "City Building Purchase")
     bool PurchaseBuildingWithGold(FName BuildingRowName); // 골드로 건물 구매
 
-    UFUNCTION(BlueprintCallable, Category = "City Building Purchase")
-    bool PurchaseBuildingWithFaith(FName BuildingRowName); // 신앙으로 건물 구매
+    // ========== 도시 유닛 구매 함수들 ==========
+    UFUNCTION(BlueprintCallable, Category = "City Unit Purchase")
+    bool PurchaseUnitWithGold(FName UnitName); // 골드로 유닛 구매
 
     // ========== 게임 상태 함수들 ==========
     UFUNCTION(BlueprintCallable, Category = "Game State")

@@ -76,13 +76,7 @@ public:
     int32 GetRange() const { return m_FinalStat.Range; }
 
     UFUNCTION(BlueprintCallable, Category = "Unit Status")
-    int32 GetProductionCost() const { return m_FinalStat.ProductionCost; }
-
-    UFUNCTION(BlueprintCallable, Category = "Unit Status")
     int32 GetGoldCost() const { return m_FinalStat.GoldCost; }
-
-    UFUNCTION(BlueprintCallable, Category = "Unit Status")
-    int32 GetFaithCost() const { return m_FinalStat.FaithCost; }
 
     UFUNCTION(BlueprintCallable, Category = "Unit Status")
     int32 GetFoodCost() const { return m_FinalStat.FoodCost; }

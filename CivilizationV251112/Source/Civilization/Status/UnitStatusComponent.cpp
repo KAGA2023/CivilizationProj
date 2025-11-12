@@ -85,9 +85,7 @@ void UUnitStatusComponent::RecalculateStats()
     m_FinalStat.MovementPoints = FMath::Max(1, m_BaseStat.MovementPoints + TotalModifier.AddMovementPoints);
     m_FinalStat.SightRange = FMath::Max(1, m_BaseStat.SightRange + TotalModifier.AddSightRange);
     m_FinalStat.Range = FMath::Max(0, m_BaseStat.Range + TotalModifier.AddRange);
-    m_FinalStat.ProductionCost = FMath::Max(0, m_BaseStat.ProductionCost + TotalModifier.AddProductionCost);
     m_FinalStat.GoldCost = FMath::Max(0, m_BaseStat.GoldCost + TotalModifier.AddGoldCost);
-    m_FinalStat.FaithCost = FMath::Max(0, m_BaseStat.FaithCost + TotalModifier.AddFaithCost);
     m_FinalStat.FoodCost = FMath::Max(0, m_BaseStat.FoodCost + TotalModifier.AddFoodCost);
     
     // 현재 체력이 최대치를 초과하지 않도록 조정

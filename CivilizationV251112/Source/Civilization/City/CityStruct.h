@@ -7,36 +7,18 @@
 #include "Engine/Texture2D.h"
 #include "CityStruct.generated.h"
 
-// 건물 타입 열거형
+// 건물 타입 열거형 (카테고리)
 UENUM(BlueprintType)
 enum class EBuildingType : uint8
 {
-    None                    UMETA(DisplayName = "None"),
-    // 과학 건물
-    Library                 UMETA(DisplayName = "Library"),                  // 도서관
-    University              UMETA(DisplayName = "University"),             // 대학교
-    ResearchLab             UMETA(DisplayName = "Research Lab"),            // 연구소
-    
-    // 문화 건물
-    Monument                UMETA(DisplayName = "Monument"),                // 기념비
-    Museum                  UMETA(DisplayName = "Museum"),                  // 박물관
-    BroadcastCenter         UMETA(DisplayName = "Broadcast Center"),        // 방송센터
-    
-    // 종교 건물
-    Shrine                  UMETA(DisplayName = "Shrine"),                  // 성소
-    Temple                  UMETA(DisplayName = "Temple"),                  // 사원
-    
-    // 산업 건물
-    Workshop                UMETA(DisplayName = "Workshop"),                // 작업장
-    Factory                 UMETA(DisplayName = "Factory"),                 // 공장
-    
-    // 상업 건물
-    Market                  UMETA(DisplayName = "Market"),                   // 시장
-    Bank                    UMETA(DisplayName = "Bank"),                    // 은행
-    
-    // 군사 건물
-    Barracks                UMETA(DisplayName = "Barracks"),                // 병영
-    Armory                  UMETA(DisplayName = "Armory"),                  // 무기고
+    None                    UMETA(DisplayName = "None"),                    // 없음
+    General                 UMETA(DisplayName = "General"),                 // 일반건물
+    Agricultural            UMETA(DisplayName = "Agricultural"),            // 식량건물
+    Industrial              UMETA(DisplayName = "Industrial"),              // 산업건물
+    Commercial              UMETA(DisplayName = "Commercial"),              // 상업건물
+    Religious               UMETA(DisplayName = "Religious"),               // 종교건물
+    Scientific              UMETA(DisplayName = "Scientific"),              // 과학건물
+    Military                UMETA(DisplayName = "Military")                 // 군사건물
 };
 
 // 생산 타입 열거형
@@ -92,13 +74,7 @@ struct CIVILIZATION_API FBuildingData : public FTableRowBase
     int32 ProductionCost = 0;                                               // 건설에 필요한 생산력
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Production & Cost")
-    int32 FoodCost = 0;                                                     // 건설에 필요한 식량
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Production & Cost")
     int32 GoldCost = 0;                                                      // 골드 구매 비용
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Production & Cost")
-    int32 FaithCost = 0;                                                     // 신앙심 구매 비용
 
     // 필요 기술
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Requirements")
@@ -117,9 +93,7 @@ struct CIVILIZATION_API FBuildingData : public FTableRowBase
         ScienceYield = 0;
         FaithYield = 0;
         ProductionCost = 0;
-        FoodCost = 0;
         GoldCost = 0;
-        FaithCost = 0;
     }
 };
 

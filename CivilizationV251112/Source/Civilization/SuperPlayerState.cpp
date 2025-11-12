@@ -267,11 +267,20 @@ void ASuperPlayerState::ProcessTurnResources()
         TurnScience += CityComponent->GetFinalScienceYield();
         TurnFaith += CityComponent->GetFinalFaithYield();
 
-        // 도시 건물 생산 진행도 업데이트 (식량과 생산력은 즉시 소비)
-        CityComponent->UpdateBuildingProductionProgress(TurnFood, TurnProduction);
-
-        // 도시 유닛 생산 진행도 업데이트 (식량과 생산력은 즉시 소비)
-        CityComponent->UpdateUnitProductionProgress(TurnFood, TurnProduction);
+        // 현재 생산 상태 확인
+        FCityCurrentStat CurrentStat = CityComponent->GetCurrentStat();
+        
+        // 건물 생산 진행도 업데이트 (생산력만 사용)
+        if (CurrentStat.ProductionType == EProductionType::Building)
+        {
+            CityComponent->UpdateBuildingProductionProgress(0, TurnProduction);
+        }
+        
+        // 유닛 생산 진행도 업데이트 (식량만 사용)
+        if (CurrentStat.ProductionType == EProductionType::Unit)
+        {
+            CityComponent->UpdateUnitProductionProgress(TurnFood, 0);
+        }
         
         // 건물 생산 완료 확인
         FName CompletedBuildingName = CityComponent->CompleteBuildingProduction();
@@ -292,16 +301,43 @@ void ASuperPlayerState::ProcessTurnResources()
                     if (UUnitManager* UnitManager = SuperGameInst->GetUnitManager())
                     {
                         // 도시 좌표에 직접 유닛 소환 (PlayerIndex 전달)
-                        UnitManager->SpawnUnitAtHex(CityCoordinate, CompletedUnitName, PlayerIndex);
+                        AUnitCharacterBase* SpawnedUnit = UnitManager->SpawnUnitAtHex(CityCoordinate, CompletedUnitName, PlayerIndex);
+                        if (SpawnedUnit)
+                        {
+                            // 유닛 소환 성공 - Population 증가
+                            Population++;
+                        }
                     }
                 }
             }
         }
+        
+        // 생산 완료 후 다시 상태 확인 (생산이 완료되어 None이 되었을 수 있음)
+        CurrentStat = CityComponent->GetCurrentStat();
+        
+        // 자원 추가 (생산 중인 타입에 따라 소비되는 자원이 다름)
+        if (CurrentStat.ProductionType == EProductionType::Building)
+        {
+            // 건물 생산 중: 생산력 소비, 식량은 추가
+            AddFood(TurnFood);
+            // 생산력은 생산에 사용됨 (추가하지 않음)
+        }
+        else if (CurrentStat.ProductionType == EProductionType::Unit)
+        {
+            // 유닛 생산 중: 식량 소비, 생산력은 추가
+            // 식량은 생산에 사용됨 (추가하지 않음)
+            AddProduction(TurnProduction);
+        }
+        else
+        {
+            // 생산 중이 아님: 둘 다 추가
+            AddFood(TurnFood);
+            AddProduction(TurnProduction);
+        }
     }
-    
-    // 자원 추가 (식량과 생산력은 건물/유닛 생산에 사용했으므로 추가하지 않음, 생산 중이 아닐 때만 추가)
-    if (!CityComponent || CityComponent->GetCurrentStat().ProductionType == EProductionType::None)
+    else
     {
+        // 도시가 없으면 모든 자원 추가
         AddFood(TurnFood);
         AddProduction(TurnProduction);
     }
@@ -537,7 +573,8 @@ bool ASuperPlayerState::PurchaseBuildingWithGold(FName BuildingRowName)
     return true;
 }
 
-bool ASuperPlayerState::PurchaseBuildingWithFaith(FName BuildingRowName)
+// ========== 도시 유닛 구매 함수들 ==========
+bool ASuperPlayerState::PurchaseUnitWithGold(FName UnitName)
 {
     // 도시가 없으면 실패
     if (!CityComponent)
@@ -545,37 +582,63 @@ bool ASuperPlayerState::PurchaseBuildingWithFaith(FName BuildingRowName)
         return false;
     }
     
-    // 이미 건설된 건물이면 구매 불가 (RowName으로 중복 체크)
-    if (CityComponent->HasBuilding(BuildingRowName))
+    // 인구 제한 체크: Population이 LimitPopulation 이상이면 유닛 구매 불가
+    if (Population >= LimitPopulation)
     {
         return false;
     }
     
-    // 건물 데이터 조회
-    FBuildingData BuildingData = CityComponent->GetBuildingDataFromTable(BuildingRowName);
-    if (BuildingData.BuildingType == EBuildingType::None)
+    // 유닛 데이터 조회
+    FUnitBaseStat UnitStat = CityComponent->GetUnitDataFromTable(UnitName);
+    if (UnitStat.UnitClass == EUnitClass::None)
     {
         return false;
     }
     
     // 구매 비용 확인
-    int32 FaithCost = BuildingData.FaithCost;
-    if (FaithCost <= 0 || Faith < FaithCost)
+    int32 GoldCost = UnitStat.GoldCost;
+    if (GoldCost <= 0 || Gold < GoldCost)
     {
-        // 신앙이 충분하지 않으면 실패
+        // 골드가 충분하지 않으면 실패
         return false;
     }
     
-    // 신앙 차감
-    if (!SpendFaith(FaithCost))
+    // 골드 차감
+    if (!SpendGold(GoldCost))
     {
         return false;
     }
     
-    // 건물 추가
-    CityComponent->AddBuilding(BuildingRowName);
-    return true;
+    // 유닛 소환 (도시 좌표에 소환, PlayerIndex 전달)
+    if (UWorld* World = GetWorld())
+    {
+        if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
+        {
+            if (UUnitManager* UnitManager = SuperGameInst->GetUnitManager())
+            {
+                // 도시 좌표에 유닛 소환 (PlayerIndex 전달하여 올바른 소유자 설정)
+                AUnitCharacterBase* SpawnedUnit = UnitManager->SpawnUnitAtHex(CityCoordinate, UnitName, PlayerIndex);
+                if (SpawnedUnit)
+                {
+                    // 유닛 소환 성공 - Population 증가
+                    Population++;
+                    return true;
+                }
+                else
+                {
+                    // 유닛 소환 실패 시 골드 환불
+                    AddGold(GoldCost);
+                    return false;
+                }
+            }
+        }
+    }
+    
+    // 유닛 소환 실패 시 골드 환불
+    AddGold(GoldCost);
+    return false;
 }
+
 
 // ========== 사치 자원 관리 함수들 ==========
 void ASuperPlayerState::AddLuxuryResource(ELuxuryResource LuxuryResource, int32 Amount)

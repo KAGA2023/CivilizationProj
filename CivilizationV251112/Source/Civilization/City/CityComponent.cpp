@@ -242,12 +242,13 @@ void UCityComponent::StartBuildingProduction(FName BuildingRowName)
     }
 
     // 건물 생산 시작/변경 (진행도 초기화)
+    // 건물은 생산력만 사용 (식량 사용 안 함)
     m_CurrentStat.ProductionType = EProductionType::Building;
     m_CurrentStat.ProductionName = BuildingRowName;
     m_CurrentStat.ProductionProgress = 0;
     m_CurrentStat.ProductionCost = BuildingData.ProductionCost;
     m_CurrentStat.FoodProgress = 0;
-    m_CurrentStat.FoodCost = BuildingData.FoodCost;
+    m_CurrentStat.FoodCost = 0; // 건물은 식량 비용 없음
 }
 
 void UCityComponent::UpdateBuildingProductionProgress(int32 FoodAmount, int32 ProductionAmount)
@@ -257,13 +258,7 @@ void UCityComponent::UpdateBuildingProductionProgress(int32 FoodAmount, int32 Pr
         return;
     }
 
-    // 진행도 업데이트 (목표치를 넘지 않도록)
-    if (m_CurrentStat.FoodCost > 0)
-    {
-        m_CurrentStat.FoodProgress += FoodAmount;
-        m_CurrentStat.FoodProgress = FMath::Min(m_CurrentStat.FoodProgress, m_CurrentStat.FoodCost);
-    }
-    
+    // 건물은 생산력만 사용 (식량 사용 안 함)
     if (m_CurrentStat.ProductionCost > 0)
     {
         m_CurrentStat.ProductionProgress += ProductionAmount;
@@ -281,11 +276,10 @@ FName UCityComponent::CompleteBuildingProduction()
         return NAME_None;
     }
 
-    // 완료 조건 확인
-    bool bFoodComplete = (m_CurrentStat.FoodCost <= 0 || m_CurrentStat.FoodProgress >= m_CurrentStat.FoodCost);
+    // 완료 조건 확인 (건물은 생산력만 사용)
     bool bProductionComplete = (m_CurrentStat.ProductionCost <= 0 || m_CurrentStat.ProductionProgress >= m_CurrentStat.ProductionCost);
 
-    if (!bFoodComplete || !bProductionComplete)
+    if (!bProductionComplete)
     {
         return NAME_None;
     }
@@ -333,10 +327,11 @@ void UCityComponent::StartUnitProduction(FName UnitName)
     }
 
     // 유닛 생산 시작/변경 (진행도 초기화)
+    // 유닛은 식량만 사용 (생산력 사용 안 함)
     m_CurrentStat.ProductionType = EProductionType::Unit;
     m_CurrentStat.ProductionName = UnitName;
     m_CurrentStat.ProductionProgress = 0;
-    m_CurrentStat.ProductionCost = UnitStat->ProductionCost;
+    m_CurrentStat.ProductionCost = 0; // 유닛은 생산력 비용 없음
     m_CurrentStat.FoodProgress = 0;
     m_CurrentStat.FoodCost = UnitStat->FoodCost;
 }
@@ -348,17 +343,11 @@ void UCityComponent::UpdateUnitProductionProgress(int32 FoodAmount, int32 Produc
         return;
     }
 
-    // 진행도 업데이트 (목표치를 넘지 않도록)
+    // 유닛은 식량만 사용 (생산력 사용 안 함)
     if (m_CurrentStat.FoodCost > 0)
     {
         m_CurrentStat.FoodProgress += FoodAmount;
         m_CurrentStat.FoodProgress = FMath::Min(m_CurrentStat.FoodProgress, m_CurrentStat.FoodCost);
-    }
-    
-    if (m_CurrentStat.ProductionCost > 0)
-    {
-        m_CurrentStat.ProductionProgress += ProductionAmount;
-        m_CurrentStat.ProductionProgress = FMath::Min(m_CurrentStat.ProductionProgress, m_CurrentStat.ProductionCost);
     }
 
     // 완료 조건 확인 및 완료 처리
@@ -372,11 +361,10 @@ FName UCityComponent::CompleteUnitProduction()
         return NAME_None;
     }
 
-    // 완료 조건 확인
+    // 완료 조건 확인 (유닛은 식량만 확인)
     bool bFoodComplete = (m_CurrentStat.FoodCost <= 0 || m_CurrentStat.FoodProgress >= m_CurrentStat.FoodCost);
-    bool bProductionComplete = (m_CurrentStat.ProductionCost <= 0 || m_CurrentStat.ProductionProgress >= m_CurrentStat.ProductionCost);
 
-    if (!bFoodComplete || !bProductionComplete)
+    if (!bFoodComplete)
     {
         return NAME_None;
     }
