@@ -114,7 +114,7 @@ struct FUnitBaseStat : public FTableRowBase
     bool CanAttack = false;                    // 공격 가능 (도시 점령도 포함)
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Special Abilities")
-    bool CanBuildBuildings = false;            // 건물 건설 가능
+    bool CanBuildFacilities = false;           // 시설 건설 가능
 
     // 요구사항
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Requirements")

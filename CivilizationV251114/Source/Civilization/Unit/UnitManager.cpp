@@ -279,6 +279,12 @@ void UUnitManager::HandleTwoTileClick(UWorldTile* ClickedTile)
         return;
     }
     
+    // 이동 중이면 클릭 무시
+    if (MovingUnit != nullptr)
+    {
+        return;
+    }
+    
     FVector2D HexPos = ClickedTile->GetGridPosition();
     
     // 첫 번째 선택이 없으면 첫 번째로 설정
@@ -303,8 +309,7 @@ void UUnitManager::HandleTwoTileClick(UWorldTile* ClickedTile)
         // 유닛 이동 실행
         MoveUnitFromFirstToSecondSelection();
         
-        // 선택 초기화 (이동 완료 후)
-        ClearSelection();
+        // 선택 초기화는 이동 완료 후 CompleteMovement()에서 처리
     }
 }
 
@@ -328,6 +333,7 @@ void UUnitManager::MoveUnitFromFirstToSecondSelection()
 {
     if (!FirstSelectedTile || !SecondSelectedTile || !WorldComponent)
     {
+        ClearSelection(); // 선택 초기화
         return;
     }
     
@@ -338,6 +344,7 @@ void UUnitManager::MoveUnitFromFirstToSecondSelection()
     AUnitCharacterBase* UnitToMove = GetUnitAtHex(FirstHexPos);
     if (!UnitToMove)
     {
+        ClearSelection(); // 선택 초기화
         return;
     }
     
@@ -346,6 +353,7 @@ void UUnitManager::MoveUnitFromFirstToSecondSelection()
     {
         if (!StatusComp->CanMove())
         {
+            ClearSelection(); // 선택 초기화
             return; // 이동할 수 없는 상태
         }
     }
@@ -353,6 +361,7 @@ void UUnitManager::MoveUnitFromFirstToSecondSelection()
     // 두 번째 타일이 이동 가능한지 확인
     if (!CanPlaceUnitAtHex(SecondHexPos))
     {
+        ClearSelection(); // 선택 초기화
         return;
     }
     
@@ -362,6 +371,7 @@ void UUnitManager::MoveUnitFromFirstToSecondSelection()
     // 경로가 없거나 유효하지 않으면 이동하지 않음
     if (Path.Num() <= 1)
     {
+        ClearSelection(); // 선택 초기화
         return;
     }
     
@@ -374,11 +384,13 @@ void UUnitManager::MoveUnitFromFirstToSecondSelection()
     // 제한된 경로가 없으면 이동하지 않음
     if (LimitedPath.Num() <= 1)
     {
+        ClearSelection(); // 선택 초기화
         return;
     }
     
     // 경로를 따라 유닛 이동 (시각적 애니메이션)
     StartVisualMovement(UnitToMove, LimitedPath);
+    // 선택 초기화는 이동 완료 후 CompleteMovement()에서 처리
 }
 
 void UUnitManager::MoveUnitAlongPath(AUnitCharacterBase* Unit, const TArray<FVector2D>& Path)
@@ -457,8 +469,9 @@ TArray<FVector2D> UUnitManager::FindPath(FVector2D StartHex, FVector2D EndHex) c
 
     // 시작 노드 초기화
     int32 StartHeuristic = CalculateHeuristic(StartHex, EndHex);
-    FAStarNode StartNode(StartHex, 0, StartHeuristic, FVector2D::ZeroVector, true);
+    FAStarNode StartNode(StartHex, 0, StartHeuristic, StartHex, true); // ParentHex를 StartHex로 설정 (시작점 표시)
     OpenSet.Add(StartHex, StartNode);
+    CameFrom.Add(StartHex, StartNode); // 시작 노드를 CameFrom에 추가
 
     int32 IterationCount = 0;
     while (OpenSet.Num() > 0)
@@ -604,16 +617,17 @@ TArray<FVector2D> UUnitManager::ReconstructPath(const TMap<FVector2D, FAStarNode
     while (CameFrom.Contains(Current))
     {
         const FAStarNode& CurrentNode = CameFrom[Current];
-        Current = CurrentNode.ParentHex;
-
-        // 시작점에 도달했는지 확인 (부모가 (0,0)인 경우)
-        if (Current == FVector2D::ZeroVector)
+        FVector2D ParentHex = CurrentNode.ParentHex;
+        
+        // 시작점에 도달했는지 확인 (부모가 자기 자신인 경우가 시작점)
+        if (ParentHex == Current)
         {
-            ReversedPath.Add(FVector2D(0, 0)); // 시작점 추가
+            // 시작점에 도달했으므로 종료
             break;
         }
-
-        ReversedPath.Add(Current);
+        
+        ReversedPath.Add(ParentHex);
+        Current = ParentHex;
     }
 
     // 역순으로 수집된 경로를 올바른 순서로 뒤집기
