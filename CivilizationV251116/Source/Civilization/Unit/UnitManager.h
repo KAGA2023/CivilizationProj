@@ -1,0 +1,211 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Components/ActorComponent.h"
+#include "UnitManager.generated.h"
+
+class UWorldComponent;
+class AUnitCharacterBase;
+class USuperGameInstance;
+
+// A* 알고리즘용 노드 구조체
+USTRUCT(BlueprintType)
+struct CIVILIZATION_API FAStarNode
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pathfinding")
+    FVector2D HexPosition = FVector2D::ZeroVector; // 육각형 좌표
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pathfinding")
+    int32 GCost = 0; // 시작점으로부터의 실제 비용
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pathfinding")
+    int32 HCost = 0; // 목표점까지의 휴리스틱 비용
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pathfinding")
+    int32 FCost = 0; // 총 비용 (G + H)
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pathfinding")
+    FVector2D ParentHex = FVector2D::ZeroVector; // 부모 노드 좌표
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pathfinding")
+    bool bIsWalkable = true; // 이동 가능한지 여부
+
+    FAStarNode()
+    {
+        HexPosition = FVector2D::ZeroVector;
+        GCost = 0;
+        HCost = 0;
+        FCost = 0;
+        ParentHex = FVector2D::ZeroVector;
+        bIsWalkable = true;
+    }
+
+    FAStarNode(FVector2D InHexPosition, int32 InGCost, int32 InHCost, FVector2D InParentHex, bool InIsWalkable)
+    {
+        HexPosition = InHexPosition;
+        GCost = InGCost;
+        HCost = InHCost;
+        FCost = GCost + HCost;
+        ParentHex = InParentHex;
+        bIsWalkable = InIsWalkable;
+    }
+
+    // 우선순위 큐를 위한 비교 연산자 (F값이 작을수록 우선순위 높음)
+    bool operator>(const FAStarNode& Other) const
+    {
+        return FCost > Other.FCost;
+    }
+
+    bool operator<(const FAStarNode& Other) const
+    {
+        return FCost < Other.FCost;
+    }
+};
+
+UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
+class CIVILIZATION_API UUnitManager : public UActorComponent
+{
+    GENERATED_BODY()
+
+public:
+    UUnitManager();
+
+protected:
+    virtual void BeginPlay() override;
+
+public:
+    virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+
+    // 유닛 소환 관련 함수들
+    UFUNCTION(BlueprintCallable, Category = "Unit Spawning")
+    class AUnitCharacterBase* SpawnUnitAtHex(FVector2D HexPosition, const FName& RowName, int32 PlayerIndex = -1); // 지정된 육각형 좌표에 유닛 소환 (PlayerIndex로 소유 플레이어 지정)
+
+    // 유닛 관리 함수들
+    UFUNCTION(BlueprintCallable, Category = "Unit Management")
+    TArray<class AUnitCharacterBase*> GetAllUnits() const; // 모든 유닛 가져오기
+
+    UFUNCTION(BlueprintCallable, Category = "Unit Management")
+    void RemoveUnit(class AUnitCharacterBase* Unit); // 유닛 제거
+
+    UFUNCTION(BlueprintCallable, Category = "Unit Management")
+    void ClearAllUnits(); // 모든 유닛 제거
+
+    // 월드 컴포넌트 설정
+    UFUNCTION(BlueprintCallable, Category = "Unit Management")
+    void SetWorldComponent(class UWorldComponent* WorldComponent); // 월드 컴포넌트 설정
+
+    // 유닛 위치 관리 함수들
+    UFUNCTION(BlueprintCallable, Category = "Unit Management")
+    class AUnitCharacterBase* GetUnitAtHex(FVector2D HexPosition) const; // 육각형 좌표의 유닛 가져오기
+
+    UFUNCTION(BlueprintCallable, Category = "Unit Management")
+    bool SetUnitAtHex(FVector2D HexPosition, class AUnitCharacterBase* Unit); // 육각형 좌표에 유닛 설정
+
+    UFUNCTION(BlueprintCallable, Category = "Unit Management")
+    void RemoveUnitFromHex(FVector2D HexPosition); // 육각형 좌표에서 유닛 제거
+
+    UFUNCTION(BlueprintCallable, Category = "Unit Management")
+    bool CanPlaceUnitAtHex(FVector2D HexPosition) const; // 해당 위치에 유닛 배치 가능 여부
+
+    // 유닛 이동력 관리
+    UFUNCTION(BlueprintCallable, Category = "Unit Management")
+    int32 GetUnitRemainingMovement(class AUnitCharacterBase* Unit) const; // 유닛의 남은 이동력 가져오기
+
+    // 건설자 판단
+    UFUNCTION(BlueprintCallable, Category = "Unit Management")
+    bool IsBuilderUnit(class AUnitCharacterBase* Unit) const; // 건설자 유닛인지 확인
+
+    // 유닛 선택 및 이동 시스템
+    UFUNCTION(BlueprintCallable, Category = "Unit Selection")
+    void HandleTwoTileClick(class UWorldTile* ClickedTile); // 2단계 타일 클릭 처리 (유닛 이동용)
+
+    UFUNCTION(BlueprintCallable, Category = "Unit Selection")
+    void ClearSelection(); // 선택 초기화
+
+    UFUNCTION(BlueprintCallable, Category = "Unit Selection")
+    class UWorldTile* GetFirstSelectedTile() const { return FirstSelectedTile; } // 첫 번째 선택된 타일 가져오기
+
+    UFUNCTION(BlueprintCallable, Category = "Unit Selection")
+    class UWorldTile* GetSecondSelectedTile() const { return SecondSelectedTile; } // 두 번째 선택된 타일 가져오기
+
+    UFUNCTION(BlueprintCallable, Category = "Unit Selection")
+    bool HasFirstSelection() const { return FirstSelectedTile != nullptr; } // 첫 번째 선택 여부
+
+    UFUNCTION(BlueprintCallable, Category = "Unit Selection")
+    bool HasSecondSelection() const { return SecondSelectedTile != nullptr; } // 두 번째 선택 여부
+
+    // 내부 유닛 이동 함수
+    void MoveUnitFromFirstToSecondSelection(); // 첫 번째 선택에서 두 번째 선택으로 유닛 이동
+    void MoveUnitAlongPath(class AUnitCharacterBase* Unit, const TArray<FVector2D>& Path); // 경로를 따라 유닛 이동
+
+    // 시각적 이동 애니메이션 함수들
+    void StartVisualMovement(class AUnitCharacterBase* Unit, const TArray<FVector2D>& Path); // 시각적 이동 시작
+    void MoveToNextTile(); // 다음 타일로 이동 (타이머 콜백)
+    void CompleteMovement(); // 이동 완료
+
+    // 경로 찾기 및 이동 시스템
+    UFUNCTION(BlueprintCallable, Category = "Pathfinding")
+    TArray<FVector2D> FindPath(FVector2D StartHex, FVector2D EndHex) const; // A* 알고리즘을 사용한 최적 경로 찾기
+
+    UFUNCTION(BlueprintCallable, Category = "Pathfinding")
+    TArray<FVector2D> FindPathWithMovementCost(FVector2D StartHex, FVector2D EndHex, int32 MaxMovementCost) const; // 최대 이동 비용 제한이 있는 경로 찾기
+
+    UFUNCTION(BlueprintCallable, Category = "Pathfinding")
+    bool CanMoveToHex(FVector2D HexPosition) const; // 해당 육각형으로 이동 가능한지 확인
+
+    UFUNCTION(BlueprintCallable, Category = "Pathfinding")
+    int32 CalculateHeuristic(FVector2D StartHex, FVector2D EndHex) const; // 휴리스틱 함수 (육각형 거리 기반)
+
+    UFUNCTION(BlueprintCallable, Category = "Pathfinding")
+    TArray<FVector2D> ReconstructPath(const TMap<FVector2D, FAStarNode>& CameFrom, FVector2D Current) const; // 경로 재구성
+
+    UFUNCTION(BlueprintCallable, Category = "Pathfinding")
+    int32 GetMovementCostBetweenHexes(FVector2D FromHex, FVector2D ToHex) const; // 두 육각형 간의 이동 비용 계산
+
+    // 층수 시스템 관련 함수들
+    UFUNCTION(BlueprintCallable, Category = "Floor System")
+    int32 GetFloorLevel(ELandType LandType) const; // 지형 타입을 층수로 변환
+
+    UFUNCTION(BlueprintCallable, Category = "Floor System")
+    bool CanMoveBetweenHexes(FVector2D FromHex, FVector2D ToHex) const; // 두 육각형 간 층수 이동 가능성 체크
+
+    UFUNCTION(BlueprintCallable, Category = "Floor System")
+    int32 GetMovementCostBetweenHexesWithFloor(FVector2D FromHex, FVector2D ToHex) const; // 층수를 고려한 이동 비용 계산
+
+private:
+    // 월드 컴포넌트 참조
+    UPROPERTY()
+    class UWorldComponent* WorldComponent = nullptr;
+
+    // 소환된 유닛들 관리
+    UPROPERTY()
+    TArray<class AUnitCharacterBase*> SpawnedUnits;
+
+    // 유닛 위치 추적 (WorldComponent에서 이동)
+    UPROPERTY()
+    TMap<FVector2D, class AUnitCharacterBase*> HexToUnitMap;
+
+    // 2단계 선택 시스템 (유닛 이동용)
+    UPROPERTY()
+    class UWorldTile* FirstSelectedTile = nullptr; // 첫 번째 선택된 타일
+
+    UPROPERTY()
+    class UWorldTile* SecondSelectedTile = nullptr; // 두 번째 선택된 타일
+
+    // 시각적 이동 애니메이션을 위한 변수들
+    UPROPERTY()
+    TArray<FVector2D> CurrentMovementPath; // 현재 이동 중인 경로
+
+    UPROPERTY()
+    int32 CurrentPathIndex = 0; // 현재 경로 인덱스
+
+    UPROPERTY()
+    class AUnitCharacterBase* MovingUnit = nullptr; // 이동 중인 유닛
+
+    UPROPERTY()
+    FTimerHandle MovementTimerHandle; // 이동 타이머 핸들
+};
