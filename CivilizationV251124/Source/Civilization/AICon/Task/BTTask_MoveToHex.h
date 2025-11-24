@@ -1,0 +1,38 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "BehaviorTree/BTTaskNode.h"
+#include "BTTask_MoveToHex.generated.h"
+
+UCLASS()
+class CIVILIZATION_API UBTTask_MoveToHex : public UBTTaskNode
+{
+    GENERATED_BODY()
+
+public:
+    UBTTask_MoveToHex();
+
+protected:
+    // Task 실행
+    virtual EBTNodeResult::Type ExecuteTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory) override;
+    
+    // Task 틱 (도착 확인)
+    virtual void TickTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory, float DeltaSeconds) override;
+
+    // Task 종료
+    virtual void OnTaskFinished(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory, EBTNodeResult::Type TaskResult) override;
+
+private:
+    // Blackboard 키 선택자
+    UPROPERTY(EditAnywhere, Category = "Blackboard")
+    FBlackboardKeySelector BBKey_TargetHexPosition;
+
+    // 도착 판단 반경
+    UPROPERTY(EditAnywhere, Category = "Movement", meta = (ClampMin = "0"))
+    float AcceptanceRadius = 20.0f;
+
+    // 헥스 좌표를 월드 좌표로 변환 (같은 높이만 고려)
+    FVector GetWorldPositionFromHex(FVector2D HexPosition, class AUnitAIController* AIController) const;
+};
