@@ -4,6 +4,8 @@
 #include "SuperCameraPawn.h"
 #include "SuperPlayerState.h"
 #include "Unit/UnitManager.h"
+#include "Unit/UnitCharacterBase.h"
+#include "Status/UnitStatusComponent.h"
 
 ASuperGameModeBase::ASuperGameModeBase()
 {
@@ -126,6 +128,22 @@ void ASuperGameModeBase::EndCurrentPlayerTurn()
 		{
 			// 플레이어의 턴 종료 처리 (자원 생산 등)
 			PlayerState->ProcessTurnResources();
+		}
+
+		// 현재 플레이어의 모든 유닛 이동력 회복
+		if (UUnitManager* UnitManager = GameInstance->GetUnitManager())
+		{
+			TArray<AUnitCharacterBase*> AllUnits = UnitManager->GetAllUnits();
+			for (AUnitCharacterBase* Unit : AllUnits)
+			{
+				if (Unit && Unit->GetPlayerIndex() == CurrentPlayerIndex)
+				{
+					if (UUnitStatusComponent* StatusComp = Unit->GetUnitStatusComponent())
+					{
+						StatusComp->ResetTurn();
+					}
+				}
+			}
 		}
 	}
 }

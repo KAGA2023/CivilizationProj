@@ -31,6 +31,10 @@ AUnitCharacterBase::AUnitCharacterBase()
         // 이동 속도 설정
         MoveComp->MaxWalkSpeed = 500.0f;
         
+        // 가속도 없이 즉시 최대 속도에 도달하도록 설정
+        MoveComp->MaxAcceleration = 999999.0f; // 매우 큰 값으로 설정하여 즉시 최대 속도 도달
+        MoveComp->BrakingDecelerationWalking = 999999.0f; // 감속도 매우 크게 설정
+        
         // 이동 방향으로 회전
         MoveComp->bOrientRotationToMovement = true;
         MoveComp->RotationRate = FRotator(0.f, 720.f, 0.f); // 회전 속도 (초당 720도)
@@ -41,6 +45,14 @@ AUnitCharacterBase::AUnitCharacterBase()
         
         // 회전을 더 부드럽게
         MoveComp->bUseControllerDesiredRotation = false; // MovementComponent가 회전 제어
+        
+        // 점프 설정
+        MoveComp->JumpZVelocity = 750.0f; // 점프 속도 설정
+        MoveComp->bCanWalkOffLedges = true; // 절벽에서 떨어질 수 있도록
+        MoveComp->bCanWalkOffLedgesWhenCrouching = true;
+        
+        // 중력 설정
+        MoveComp->GravityScale = 3.0f; // 중력 영향 2배
     }
 }
 

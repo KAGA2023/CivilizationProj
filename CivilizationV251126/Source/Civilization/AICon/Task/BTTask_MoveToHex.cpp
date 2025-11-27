@@ -138,6 +138,79 @@ void UBTTask_MoveToHex::TickTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeM
     
     float Distance = Direction.Size();
 
+    // 점프 체크 (목표에 가까워졌을 때, 그리고 이 목표 타일에 대해 아직 점프하지 않았을 때)
+    if (Distance <= 300.0f && LastJumpedTargetHex != TargetHex)
+    {
+        // 경로에서 현재 타일 위치 가져오기 (더 정확함)
+        TArray<FVector2D> CurrentPath = UnitAIController->GetCurrentMovementPath();
+        int32 CurrentIndex = UnitAIController->GetCurrentPathIndex();
+        
+        // 현재 타일 헥스 좌표 (경로에서 가져오기)
+        FVector2D CurrentHex;
+        if (CurrentPath.Num() > 0 && CurrentIndex > 0 && CurrentIndex <= CurrentPath.Num())
+        {
+            // 현재 인덱스는 다음 타일을 가리키므로, 이전 타일이 현재 타일
+            CurrentHex = CurrentPath[CurrentIndex - 1];
+        }
+        else if (CurrentPath.Num() > 0)
+        {
+            // 인덱스가 0이거나 범위를 벗어난 경우 첫 번째 타일 사용
+            CurrentHex = CurrentPath[0];
+        }
+        else
+        {
+            // 경로가 없으면 월드 좌표로 변환
+            CurrentHex = UnitAIController->WorldToHex(CurrentPosition);
+        }
+        
+        // WorldComponent에서 타일 정보 가져오기
+        UWorldComponent* WorldComponent = UnitAIController->GetWorldComponent();
+        if (WorldComponent)
+        {
+            UWorldTile* CurrentTile = WorldComponent->GetTileAtHex(CurrentHex);
+            UWorldTile* TargetTile = WorldComponent->GetTileAtHex(TargetHex);
+            
+            if (CurrentTile && TargetTile)
+            {
+                ELandType CurrentLandType = CurrentTile->GetLandType();
+                ELandType TargetLandType = TargetTile->GetLandType();
+                
+                // 점프 조건 체크:
+                // 1. 평지 → 언덕
+                // 2. 언덕 → 산
+                bool bShouldJump = false;
+                if (CurrentLandType == ELandType::Plains && TargetLandType == ELandType::Hills)
+                {
+                    bShouldJump = true;
+                }
+                else if (CurrentLandType == ELandType::Hills && TargetLandType == ELandType::Mountains)
+                {
+                    bShouldJump = true;
+                }
+                
+                // 점프 실행
+                if (bShouldJump)
+                {
+                    if (ACharacter* Character = Cast<ACharacter>(Pawn))
+                    {
+                        // CharacterMovementComponent를 통해 점프 가능 여부 확인
+                        if (UCharacterMovementComponent* MoveComp = Character->GetCharacterMovement())
+                        {
+                            // 점프 가능 여부 확인
+                            // IsFalling()이 false이고 CanAttemptJump()가 true일 때만 점프
+                            // 이미 점프 중이면 (IsFalling() == true) 다시 점프하지 않음
+                            if (!MoveComp->IsFalling() && MoveComp->CanAttemptJump())
+                            {
+                                Character->Jump();
+                                LastJumpedTargetHex = TargetHex; // 이 목표 타일에 대해 점프했음을 기록
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // 도착 확인
     if (Distance <= AcceptanceRadius)
     {
@@ -172,6 +245,9 @@ void UBTTask_MoveToHex::TickTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeM
         // 마지막 타일이 아니면 멈추지 않고 다음 헥스로 이동
         // 다음 헥스로 이동 (인덱스 증가 및 Blackboard 업데이트)
         UnitAIController->MoveToNextHexInPath();
+        
+        // 새로운 목표 타일로 변경되므로 점프 플래그 리셋
+        LastJumpedTargetHex = FVector2D::ZeroVector;
         
         // 다음 틱에서 새로운 목표로 이동 계속
         // (이번 틱에서는 현재 방향으로 계속 이동)

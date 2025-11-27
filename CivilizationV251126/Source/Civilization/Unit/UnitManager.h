@@ -140,7 +140,6 @@ public:
 
     // 내부 유닛 이동 함수
     void MoveUnitFromFirstToSecondSelection(); // 첫 번째 선택에서 두 번째 선택으로 유닛 이동
-    void MoveUnitAlongPath(class AUnitCharacterBase* Unit, const TArray<FVector2D>& Path); // 경로를 따라 유닛 이동
 
     // 시각적 이동 애니메이션 함수들
     void StartVisualMovement(class AUnitCharacterBase* Unit, const TArray<FVector2D>& Path); // 시각적 이동 시작

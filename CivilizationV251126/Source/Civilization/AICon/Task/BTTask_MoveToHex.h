@@ -33,6 +33,9 @@ private:
     UPROPERTY(EditAnywhere, Category = "Movement", meta = (ClampMin = "0"))
     float AcceptanceRadius = 20.0f;
 
+    // 마지막으로 점프한 목표 타일 좌표 (각 타일 이동마다 한 번만 점프하기 위함)
+    FVector2D LastJumpedTargetHex = FVector2D::ZeroVector;
+
     // 헥스 좌표를 월드 좌표로 변환 (같은 높이만 고려)
     FVector GetWorldPositionFromHex(FVector2D HexPosition, class AUnitAIController* AIController) const;
 };

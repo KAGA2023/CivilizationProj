@@ -8,9 +8,11 @@
 #include "UObject/ConstructorHelpers.h"
 #include "WorldComponent.h"
 #include "../SuperGameInstance.h"
+#include "../SuperGameModeBase.h"
 #include "../Unit/UnitManager.h"
 #include "../Unit/UnitCharacterBase.h"
 #include "../SuperPlayerState.h"
+#include "../Turn/TurnComponent.h"
 
 AWorldTileActor::AWorldTileActor()
 {
@@ -386,6 +388,22 @@ void AWorldTileActor::OnTileClicked(UPrimitiveComponent* TouchedComponent, FKey 
 	// 좌클릭만 처리
 	if (ButtonPressed == EKeys::LeftMouseButton)
 	{
+		// 턴 체크: 플레이어 0의 턴이 아니면 클릭 무시
+		if (UWorld* World = GetWorld())
+		{
+			if (ASuperGameModeBase* GameMode = Cast<ASuperGameModeBase>(World->GetAuthGameMode()))
+			{
+				if (UTurnComponent* TurnComponent = GameMode->GetTurnComponent())
+				{
+					// 플레이어 0의 턴이 아니면 클릭 무시
+					if (TurnComponent->GetCurrentPlayerIndex() != 0)
+					{
+						return;
+					}
+				}
+			}
+		}
+
 		if (!TileData || !GetWorld())
 		{
 			return;

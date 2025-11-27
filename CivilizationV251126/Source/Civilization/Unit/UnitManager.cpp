@@ -388,51 +388,6 @@ void UUnitManager::MoveUnitFromFirstToSecondSelection()
     // 선택 초기화는 이동 완료 후 CompleteMovement()에서 처리
 }
 
-void UUnitManager::MoveUnitAlongPath(AUnitCharacterBase* Unit, const TArray<FVector2D>& Path)
-{
-    if (!Unit || Path.Num() <= 1)
-    {
-        return;
-    }
-    
-    // 시작점에서 유닛 제거
-    FVector2D StartHex = Path[0];
-    RemoveUnitFromHex(StartHex);
-    
-    // 경로의 마지막 지점으로 유닛 이동
-    FVector2D EndHex = Path[Path.Num() - 1];
-    
-    // 목표 위치에 유닛 배치
-    SetUnitAtHex(EndHex, Unit);
-    
-    // 유닛의 월드 위치 업데이트
-    FVector NewWorldPosition = WorldComponent->HexToWorld(EndHex);
-    
-    // 타일의 지형 타입에 따라 Z축 높이 설정
-    UWorldTile* TargetTile = WorldComponent->GetTileAtHex(EndHex);
-    if (TargetTile)
-    {
-        switch (TargetTile->GetLandType())
-        {
-        case ELandType::Plains:
-            NewWorldPosition.Z = 183.0f; // 평지
-            break;
-        case ELandType::Hills:
-            NewWorldPosition.Z = 256.0f; // 언덕
-            break;
-        case ELandType::Mountains:
-            NewWorldPosition.Z = 329.0f; // 산
-            break;
-        default:
-            NewWorldPosition.Z = 183.0f; // 기본값 (평지)
-            break;
-        }
-    }
-    
-    // 유닛의 실제 월드 위치 변경
-    Unit->SetActorLocation(NewWorldPosition);
-}
-
 // 경로 찾기 및 이동 시스템 구현
 TArray<FVector2D> UUnitManager::FindPath(FVector2D StartHex, FVector2D EndHex) const
 {
