@@ -54,14 +54,52 @@ FCombatResult UUnitCombatComponent::ExecuteCombat(AUnitCharacterBase* Attacker, 
     int32 BaseAttackDamage = CalculateAttackDamage(BaseAttackerAttackStrength, AttackerCurrentHealth, AttackerMaxHealth);
     
     int32 BaseCounterDamage = 0;
+    // 반격 조건: 거리 1 AND 층수 차이 1 이하
     if (HexDistance == 1)
     {
-        BaseCounterDamage = CalculateCounterDamage(BaseDefenderDefenseStrength, DefenderCurrentHealth, DefenderMaxHealth);
+        // 기존 GetFloorLevelAtHex() 함수 재활용
+        int32 AttackerFloor = GetFloorLevelAtHex(AttackerHex);
+        int32 DefenderFloor = GetFloorLevelAtHex(DefenderHex);
+        int32 FloorDifference = FMath::Abs(AttackerFloor - DefenderFloor);
+        
+        // 층수 차이가 1 이하일 때만 반격
+        if (FloorDifference <= 1)
+        {
+            BaseCounterDamage = CalculateCounterDamage(BaseDefenderDefenseStrength, DefenderCurrentHealth, DefenderMaxHealth);
+        }
     }
 
     // ========== 3단계: 지형 보너스 적용 ==========
-    int32 AttackerCombatBonus = GetCombatBonusAtHex(AttackerHex);
-    int32 DefenderCombatBonus = GetCombatBonusAtHex(DefenderHex);
+    int32 AttackerRange = AttackerStatus->GetRange();
+    int32 DefenderRange = DefenderStatus->GetRange();
+
+    int32 AttackerCombatBonus = 0;
+    int32 DefenderCombatBonus = 0;
+
+    // 공격자 보너스 계산
+    if (AttackerRange > 1)
+    {
+        // 원거리 유닛: Range 보너스 적용 (사거리 체크에만 사용, 공격력에는 영향 없음)
+        // Range 보너스는 HandleCombatSelection에서 사거리 체크 시 적용
+        AttackerCombatBonus = 0; // 원거리 유닛은 공격력 보너스 없음
+    }
+    else
+    {
+        // 근접 유닛: 기존 공격력 보너스 적용
+        AttackerCombatBonus = CalculateCombatBonus(AttackerHex, DefenderHex);
+    }
+
+    // 방어자 보너스 계산 (반격용)
+    if (DefenderRange > 1)
+    {
+        // 원거리 유닛: Range 보너스 적용
+        DefenderCombatBonus = 0; // 원거리 유닛은 공격력 보너스 없음
+    }
+    else
+    {
+        // 근접 유닛: 기존 공격력 보너스 적용
+        DefenderCombatBonus = CalculateCombatBonus(DefenderHex, AttackerHex);
+    }
     
     int32 FinalAttackDamage = BaseAttackDamage + AttackerCombatBonus;
     int32 FinalCounterDamage = (BaseCounterDamage > 0) ? BaseCounterDamage + DefenderCombatBonus : 0;
@@ -174,7 +212,68 @@ int32 UUnitCombatComponent::CalculateActualDamage(int32 BaseDamage, int32 Curren
     return FMath::Max(1, FinalDamage);
 }
 
-int32 UUnitCombatComponent::GetCombatBonusAtHex(FVector2D HexPosition) const
+// 지형 보너스 계산 (층수 + 숲)
+int32 UUnitCombatComponent::CalculateCombatBonus(FVector2D MyHex, FVector2D EnemyHex) const
+{
+    int32 TotalBonus = 0;
+    
+    // 1. 층수 보너스
+    TotalBonus += CalculateHeightBonus(MyHex, EnemyHex);
+    
+    // 2. 숲 보너스
+    TotalBonus += CalculateForestBonus(MyHex);
+    
+    return TotalBonus;
+}
+
+// 층수 보너스 계산
+int32 UUnitCombatComponent::CalculateHeightBonus(FVector2D MyHex, FVector2D EnemyHex) const
+{
+    int32 MyFloor = GetFloorLevelAtHex(MyHex);
+    int32 EnemyFloor = GetFloorLevelAtHex(EnemyHex);
+    
+    // 내 타일이 상대 타일보다 높으면 보너스
+    if (MyFloor > EnemyFloor)
+    {
+        return LAND_ATK_BONUS;
+    }
+    
+    return 0;
+}
+
+// 숲 보너스 계산
+int32 UUnitCombatComponent::CalculateForestBonus(FVector2D MyHex) const
+{
+    // WorldComponent 가져오기
+    if (UWorld* World = GetWorld())
+    {
+        if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
+        {
+            if (UWorldComponent* WorldComponent = SuperGameInst->GetGeneratedWorldComponent())
+            {
+                if (UWorldTile* Tile = WorldComponent->GetTileAtHex(MyHex))
+                {
+                    // 바다 타일 체크 (통행 불가이므로 체크 불필요하지만 안전장치)
+                    if (Tile->GetTerrainType() == ETerrainType::Ocean)
+                    {
+                        return 0;
+                    }
+                    
+                    // 숲이 있으면 보너스
+                    if (Tile->HasForest())
+                    {
+                        return LAND_ATK_BONUS;
+                    }
+                }
+            }
+        }
+    }
+    
+    return 0;
+}
+
+// 타일의 층수 가져오기
+int32 UUnitCombatComponent::GetFloorLevelAtHex(FVector2D HexPosition) const
 {
     // WorldComponent 가져오기
     if (UWorld* World = GetWorld())
@@ -185,15 +284,40 @@ int32 UUnitCombatComponent::GetCombatBonusAtHex(FVector2D HexPosition) const
             {
                 if (UWorldTile* Tile = WorldComponent->GetTileAtHex(HexPosition))
                 {
-                    // 타일의 전투 보너스 반환 (캐시된 값 + 모디파이어)
-                    return Tile->GetTotalCombatBonus();
+                    // 바다 타일은 체크하지 않음 (통행 불가)
+                    if (Tile->GetTerrainType() == ETerrainType::Ocean)
+                    {
+                        return 1; // 기본값 반환 (실제로는 사용되지 않음)
+                    }
+                    
+                    // UnitManager의 GetFloorLevel 로직 재현
+                    ELandType LandType = Tile->GetLandType();
+                    switch (LandType)
+                    {
+                    case ELandType::Plains:
+                        return 1;
+                    case ELandType::Hills:
+                        return 2;
+                    case ELandType::Mountains:
+                        return 3;
+                    default:
+                        return 1;
+                    }
                 }
             }
         }
     }
     
-    // WorldComponent를 찾을 수 없으면 0 반환
-    return 0;
+    return 1; // 기본값
+}
+
+// 원거리 유닛의 Range 보너스 계산 (지형 기반)
+int32 UUnitCombatComponent::CalculateRangeBonus(FVector2D MyHex) const
+{
+    int32 FloorLevel = GetFloorLevelAtHex(MyHex);
+    
+    // 평지(1층): +0, 언덕(2층): +1, 산(3층): +2
+    return FloorLevel - 1;
 }
 
 UUnitStatusComponent* UUnitCombatComponent::GetStatusComponent(AUnitCharacterBase* Unit) const

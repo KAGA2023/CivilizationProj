@@ -8,6 +8,9 @@
 #include "../Status/UnitStatusComponent.h"
 #include "UnitCombatComponent.generated.h"
 
+// 지형 보너스 수치 정의
+#define LAND_ATK_BONUS 5
+
 class UUnitStatusComponent;
 class AUnitCharacterBase;
 
@@ -35,6 +38,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Combat|Damage")
     int32 CalculateCounterDamage(int32 BaseDefenseStrength, int32 CurrentHealth, int32 MaxHealth) const;
 
+     // 원거리 유닛의 Range 보너스 계산 (지형 기반)
+     int32 CalculateRangeBonus(FVector2D MyHex) const;
+
 protected:
     // Called when the game starts
     virtual void BeginPlay() override;
@@ -42,14 +48,20 @@ protected:
     // 체력 비율에 따른 데미지 배율 적용
     int32 CalculateActualDamage(int32 BaseDamage, int32 CurrentHealth, int32 MaxHealth) const;
 
-    // 지형 보너스 가져오기 (HexPosition 기반)
-    int32 GetCombatBonusAtHex(FVector2D HexPosition) const;
+    // 지형 보너스 계산 (층수 + 숲)
+    int32 CalculateCombatBonus(FVector2D MyHex, FVector2D EnemyHex) const;
+
+    // 층수 보너스 계산
+    int32 CalculateHeightBonus(FVector2D MyHex, FVector2D EnemyHex) const;
+
+    // 숲 보너스 계산
+    int32 CalculateForestBonus(FVector2D MyHex) const;
+
+    // 타일의 층수 가져오기
+    int32 GetFloorLevelAtHex(FVector2D HexPosition) const;
 
     // UnitStatusComponent 가져오기 헬퍼
     UUnitStatusComponent* GetStatusComponent(AUnitCharacterBase* Unit) const;
-
-    // 지형 정보 가져오기 (향후 World/Grid 시스템과 연동)
-    // ETerrainType GetTerrainTypeAtLocation(const FVector& Location) const;
 
 public:	
     // Called every frame

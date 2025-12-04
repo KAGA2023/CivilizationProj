@@ -921,14 +921,49 @@ void UUnitManager::HandleCombatSelection(UWorldTile* ClickedTile)
         AUnitCharacterBase* Attacker = GetUnitAtHex(CombatFirstSelectedTile->GetGridPosition());
         if (Attacker && Attacker->GetUnitStatusComponent())
         {
-            int32 AttackRange = Attacker->GetUnitStatusComponent()->GetRange();
+            int32 BaseAttackRange = Attacker->GetUnitStatusComponent()->GetRange();
+            int32 AttackRange = BaseAttackRange; // Range 보너스 적용 전 기본값
             int32 HexDistance = WorldComponent->GetHexDistance(CombatFirstSelectedTile->GetGridPosition(), HexPos);
+            
+            // 원거리 유닛인 경우 Range 보너스 적용
+            if (BaseAttackRange > 1)
+            {
+                // UnitCombatComponent를 통해 Range 보너스 계산
+                if (UUnitCombatComponent* CombatComp = Attacker->GetUnitCombatComponent())
+                {
+                    // Range 보너스 계산 (평지: +0, 언덕: +1, 산: +2)
+                    int32 RangeBonus = CombatComp->CalculateRangeBonus(CombatFirstSelectedTile->GetGridPosition());
+                    AttackRange += RangeBonus;
+                }
+            }
             
             // 사거리 밖이면 선택 초기화
             if (HexDistance > AttackRange)
             {
                 ClearCombatSelection(); // 첫 번째 선택도 초기화
                 return;
+            }
+            
+            // Range == 1인 근접 공격일 때만 층수 차이 체크
+            if (BaseAttackRange == 1)
+            {
+                // 기존 GetFloorLevel() 함수 재활용
+                UWorldTile* AttackerTile = CombatFirstSelectedTile;
+                UWorldTile* DefenderTile = WorldComponent->GetTileAtHex(HexPos);
+                
+                if (AttackerTile && DefenderTile)
+                {
+                    int32 AttackerFloor = GetFloorLevel(AttackerTile->GetLandType());
+                    int32 DefenderFloor = GetFloorLevel(DefenderTile->GetLandType());
+                    int32 FloorDifference = FMath::Abs(AttackerFloor - DefenderFloor);
+                    
+                    // 층수 차이가 2 이상이면 선택 초기화
+                    if (FloorDifference >= 2)
+                    {
+                        ClearCombatSelection(); // 첫 번째 선택도 초기화
+                        return;
+                    }
+                }
             }
         }
         
