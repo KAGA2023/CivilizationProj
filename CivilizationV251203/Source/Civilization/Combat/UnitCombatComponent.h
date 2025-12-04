@@ -21,7 +21,7 @@ public:
 
     // 전투 실행 (메인 함수)
     UFUNCTION(BlueprintCallable, Category = "Combat")
-    FCombatResult ExecuteCombat(AUnitCharacterBase* Attacker, AUnitCharacterBase* Defender);
+    FCombatResult ExecuteCombat(AUnitCharacterBase* Attacker, AUnitCharacterBase* Defender, int32 HexDistance, FVector2D AttackerHex, FVector2D DefenderHex);
 
     // 전투 가능 여부 확인
     UFUNCTION(BlueprintCallable, Category = "Combat")
@@ -42,8 +42,8 @@ protected:
     // 체력 비율에 따른 데미지 배율 적용
     int32 CalculateActualDamage(int32 BaseDamage, int32 CurrentHealth, int32 MaxHealth) const;
 
-    // 지형 보너스 계산 (향후 확장용)
-    float GetTerrainBonus(const FVector& Location, bool bIsAttacker) const;
+    // 지형 보너스 가져오기 (HexPosition 기반)
+    int32 GetCombatBonusAtHex(FVector2D HexPosition) const;
 
     // UnitStatusComponent 가져오기 헬퍼
     UUnitStatusComponent* GetStatusComponent(AUnitCharacterBase* Unit) const;

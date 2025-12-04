@@ -987,7 +987,7 @@ void UWorldComponent::RecalculateTileYields(UWorldTile* Tile)
     TileData.CachedScienceYield = CalculateBaseScienceYield(Tile);
     TileData.CachedFaithYield = CalculateBaseFaithYield(Tile);
     TileData.CachedMovementCost = CalculateBaseMovementCost(Tile);
-    TileData.CachedDefenseBonus = CalculateBaseDefenseBonus(Tile);
+    TileData.CachedCombatBonus = CalculateCombatBonus(Tile);
     Tile->SetTileData(TileData);
 }
 
@@ -1460,17 +1460,17 @@ int32 UWorldComponent::CalculateBaseMovementCost(UWorldTile* Tile) const
     return TotalMovementCost;
 }
 
-int32 UWorldComponent::CalculateBaseDefenseBonus(UWorldTile* Tile) const
+int32 UWorldComponent::CalculateCombatBonus(UWorldTile* Tile) const
 {
     if (!Tile)
     {
         return 0;
     }
     
-    int32 TotalDefenseBonus = 0;
+    int32 TotalCombatBonus = 0;
     FTileData TileData = Tile->GetTileData();
     
-    // 기후대 기본 방어 보너스
+    // 기후대 기본 전투 보너스
     if (ClimateDataTable)
     {
         // Enum을 문자열로 변환해서 데이터테이블에서 찾기
@@ -1479,11 +1479,11 @@ int32 UWorldComponent::CalculateBaseDefenseBonus(UWorldTile* Tile) const
         FClimateData* ClimateData = ClimateDataTable->FindRow<FClimateData>(FName(*ClimateName), TEXT("ClimateData"));
         if (ClimateData)
         {
-            TotalDefenseBonus += ClimateData->BaseDefenseBonus;
+            TotalCombatBonus += ClimateData->BaseCombatBonus;
         }
     }
     
-    // 땅 타입 방어 보너스 (바다는 이동 불가이므로 보너스 없음)
+    // 땅 타입 전투 보너스 (바다는 이동 불가이므로 보너스 없음)
     if (TileData.TerrainType == ETerrainType::Land)
     {
         if (LandTypeDataTable)
@@ -1494,12 +1494,12 @@ int32 UWorldComponent::CalculateBaseDefenseBonus(UWorldTile* Tile) const
             FLandTypeData* LandData = LandTypeDataTable->FindRow<FLandTypeData>(FName(*LandName), TEXT("LandTypeData"));
             if (LandData)
             {
-                TotalDefenseBonus += LandData->DefenseBonus;
+                TotalCombatBonus += LandData->CombatBonus;
             }
         }
     }
     
-    return TotalDefenseBonus;
+    return TotalCombatBonus;
 }
 
 // 판게아 스타일 지형 생성 함수들

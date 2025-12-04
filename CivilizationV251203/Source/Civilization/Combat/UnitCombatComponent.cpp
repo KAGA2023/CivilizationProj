@@ -4,6 +4,9 @@
 #include "../Status/UnitStatusComponent.h"
 #include "../Status/UnitStatusStruct.h"
 #include "../Unit/UnitCharacterBase.h"
+#include "../World/WorldComponent.h"
+#include "../World/WorldStruct.h"
+#include "../SuperGameInstance.h"
 
 UUnitCombatComponent::UUnitCombatComponent()
 {
@@ -20,7 +23,7 @@ void UUnitCombatComponent::TickComponent(float DeltaTime, ELevelTick TickType, F
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 }
 
-FCombatResult UUnitCombatComponent::ExecuteCombat(AUnitCharacterBase* Attacker, AUnitCharacterBase* Defender)
+FCombatResult UUnitCombatComponent::ExecuteCombat(AUnitCharacterBase* Attacker, AUnitCharacterBase* Defender, int32 HexDistance, FVector2D AttackerHex, FVector2D DefenderHex)
 {
     FCombatResult Result;
 
@@ -39,36 +42,47 @@ FCombatResult UUnitCombatComponent::ExecuteCombat(AUnitCharacterBase* Attacker, 
         return Result;
     }
 
-    // 3. 스탯 가져오기
-    int32 AttackerAttackStrength = AttackerStatus->GetAttackStrength();
-    int32 DefenderDefenseStrength = DefenderStatus->GetDefenseStrength();
+    // ========== 1단계: 스탯 가져오기 ==========
+    int32 BaseAttackerAttackStrength = AttackerStatus->GetAttackStrength();
+    int32 BaseDefenderDefenseStrength = DefenderStatus->GetDefenseStrength();
     int32 AttackerCurrentHealth = AttackerStatus->GetCurrentHealth();
     int32 AttackerMaxHealth = AttackerStatus->GetMaxHealth();
     int32 DefenderCurrentHealth = DefenderStatus->GetCurrentHealth();
     int32 DefenderMaxHealth = DefenderStatus->GetMaxHealth();
 
-    // 4. 지형 정보 가져오기 (향후 확장용, 현재는 기본값 사용)
-    FVector AttackerLocation = Attacker->GetActorLocation();
-    FVector DefenderLocation = Defender->GetActorLocation();
+    // ========== 2단계: 체력 비율 기반 데미지 계산 ==========
+    int32 BaseAttackDamage = CalculateAttackDamage(BaseAttackerAttackStrength, AttackerCurrentHealth, AttackerMaxHealth);
+    
+    int32 BaseCounterDamage = 0;
+    if (HexDistance == 1)
+    {
+        BaseCounterDamage = CalculateCounterDamage(BaseDefenderDefenseStrength, DefenderCurrentHealth, DefenderMaxHealth);
+    }
 
-    // 5. 데미지 계산 (동시에 계산)
-    int32 AttackDamage = CalculateAttackDamage(AttackerAttackStrength, AttackerCurrentHealth, AttackerMaxHealth);
-    int32 CounterDamage = CalculateCounterDamage(DefenderDefenseStrength, DefenderCurrentHealth, DefenderMaxHealth);
+    // ========== 3단계: 지형 보너스 적용 ==========
+    int32 AttackerCombatBonus = GetCombatBonusAtHex(AttackerHex);
+    int32 DefenderCombatBonus = GetCombatBonusAtHex(DefenderHex);
+    
+    int32 FinalAttackDamage = BaseAttackDamage + AttackerCombatBonus;
+    int32 FinalCounterDamage = (BaseCounterDamage > 0) ? BaseCounterDamage + DefenderCombatBonus : 0;
 
-    // 6. 데미지 적용 (동시에 적용 - 문명6 방식)
-    // 피격자가 먼저 죽어도 반격 데미지는 공격자에게 들어감
-    DefenderStatus->TakeDamage(AttackDamage);
-    AttackerStatus->TakeDamage(CounterDamage);
+    // ========== 데미지 적용 (동시에 적용 - 문명6 방식) ==========
+    // 피격자가 먼저 죽어도 반격 데미지는 공격자에게 들어감 (거리 1일 때만)
+    DefenderStatus->TakeDamage(FinalAttackDamage);
+    if (FinalCounterDamage > 0)
+    {
+        AttackerStatus->TakeDamage(FinalCounterDamage);
+    }
 
-    // 7. 결과 확인
+    // ========== 결과 확인 ==========
     Result.bDefenderAlive = !DefenderStatus->IsDead();
     Result.bAttackerAlive = !AttackerStatus->IsDead();
-    Result.AttackerDamageDealt = AttackDamage;
-    Result.DefenderDamageDealt = CounterDamage;
-    Result.AttackerDamageTaken = CounterDamage;
-    Result.DefenderDamageTaken = AttackDamage;
+    Result.AttackerDamageDealt = FinalAttackDamage;
+    Result.DefenderDamageDealt = FinalCounterDamage;
+    Result.AttackerDamageTaken = FinalCounterDamage;
+    Result.DefenderDamageTaken = FinalAttackDamage;
 
-    // 8. 상태 업데이트
+    // ========== 상태 업데이트 ==========
     AttackerStatus->SetHasAttacked(true);
 
     return Result;
@@ -124,26 +138,14 @@ bool UUnitCombatComponent::CanExecuteCombat(AUnitCharacterBase* Attacker, AUnitC
 
 int32 UUnitCombatComponent::CalculateAttackDamage(int32 BaseAttackStrength, int32 CurrentHealth, int32 MaxHealth) const
 {
-    // 지형 보너스는 향후 확장 (현재는 0.0f)
-    float TerrainBonus = 0.0f; // GetTerrainBonus(Location, true);
-    
-    // 지형 보너스 적용
-    int32 TerrainAdjustedStrength = FMath::RoundToInt(static_cast<float>(BaseAttackStrength) * (1.0f + TerrainBonus));
-    
-    // 체력 비율 배율 적용
-    return CalculateActualDamage(TerrainAdjustedStrength, CurrentHealth, MaxHealth);
+    // 체력 비율 배율 적용 (지형 보너스는 ExecuteCombat에서 별도 적용)
+    return CalculateActualDamage(BaseAttackStrength, CurrentHealth, MaxHealth);
 }
 
 int32 UUnitCombatComponent::CalculateCounterDamage(int32 BaseDefenseStrength, int32 CurrentHealth, int32 MaxHealth) const
 {
-    // 지형 보너스는 향후 확장 (현재는 0.0f)
-    float TerrainBonus = 0.0f; // GetTerrainBonus(Location, false);
-    
-    // 지형 보너스 적용
-    int32 TerrainAdjustedStrength = FMath::RoundToInt(static_cast<float>(BaseDefenseStrength) * (1.0f + TerrainBonus));
-    
-    // 체력 비율 배율 적용
-    return CalculateActualDamage(TerrainAdjustedStrength, CurrentHealth, MaxHealth);
+    // 체력 비율 배율 적용 (지형 보너스는 ExecuteCombat에서 별도 적용)
+    return CalculateActualDamage(BaseDefenseStrength, CurrentHealth, MaxHealth);
 }
 
 int32 UUnitCombatComponent::CalculateActualDamage(int32 BaseDamage, int32 CurrentHealth, int32 MaxHealth) const
@@ -172,11 +174,26 @@ int32 UUnitCombatComponent::CalculateActualDamage(int32 BaseDamage, int32 Curren
     return FMath::Max(1, FinalDamage);
 }
 
-float UUnitCombatComponent::GetTerrainBonus(const FVector& Location, bool bIsAttacker) const
+int32 UUnitCombatComponent::GetCombatBonusAtHex(FVector2D HexPosition) const
 {
-    // 향후 World/Grid 시스템과 연동하여 지형 보너스 계산
-    // 현재는 기본값 0.0f 반환 (보너스 없음)
-    return 0.0f;
+    // WorldComponent 가져오기
+    if (UWorld* World = GetWorld())
+    {
+        if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
+        {
+            if (UWorldComponent* WorldComponent = SuperGameInst->GetGeneratedWorldComponent())
+            {
+                if (UWorldTile* Tile = WorldComponent->GetTileAtHex(HexPosition))
+                {
+                    // 타일의 전투 보너스 반환 (캐시된 값 + 모디파이어)
+                    return Tile->GetTotalCombatBonus();
+                }
+            }
+        }
+    }
+    
+    // WorldComponent를 찾을 수 없으면 0 반환
+    return 0;
 }
 
 UUnitStatusComponent* UUnitCombatComponent::GetStatusComponent(AUnitCharacterBase* Unit) const

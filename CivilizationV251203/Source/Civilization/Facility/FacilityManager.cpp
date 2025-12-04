@@ -258,9 +258,8 @@ bool UFacilityManager::BuildFacility(FName FacilityRowName, FVector2D TileCoordi
                 {
                     if (UnitManager->IsBuilderUnit(UnitAtTile))
                     {
-                        // 먼저 HexToUnitMap에서 제거한 후 유닛 Destroy
-                        UnitManager->RemoveUnitFromHex(TileCoordinate);
-                        UnitManager->RemoveUnit(UnitAtTile);
+                        // 유닛 완전 제거 (HexToUnitMap에서 먼저 제거 후 Destroy)
+                        UnitManager->DestroyUnit(UnitAtTile, TileCoordinate);
                     }
                 }
             }

@@ -468,7 +468,7 @@ void AWorldTileActor::OnTileClicked(UPrimitiveComponent* TouchedComponent, FKey 
 				if (UUnitManager* UnitManager = SuperGameInst->GetUnitManager())
 				{
 					// 첫 번째 선택 단계인 경우, 해당 타일의 유닛이 플레이어 0의 유닛인지 확인
-					if (!UnitManager->HasFirstSelection())
+					if (!UnitManager->HasMoveFirstSelection())
 					{
 						AUnitCharacterBase* UnitAtTile = UnitManager->GetUnitAtHex(HexPos);
 						
@@ -479,7 +479,31 @@ void AWorldTileActor::OnTileClicked(UPrimitiveComponent* TouchedComponent, FKey 
 						}
 					}
 					
-					UnitManager->HandleTwoTileClick(TileData);
+					UnitManager->HandleMoveSelection(TileData);
+				}
+			}
+		}
+
+		// UnitManager에 클릭 전달 (전투용 2단계 선택) - 둘 다 호출
+		if (UWorld* World = GetWorld())
+		{
+			if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
+			{
+				if (UUnitManager* UnitManager = SuperGameInst->GetUnitManager())
+				{
+					// 첫 번째 전투 선택 단계인 경우, 해당 타일의 유닛이 플레이어 0의 유닛인지 확인
+					if (!UnitManager->HasCombatFirstSelection())
+					{
+						AUnitCharacterBase* UnitAtTile = UnitManager->GetUnitAtHex(HexPos);
+						
+						// 유닛이 있고, 플레이어 0의 유닛이 아니면 클릭 무시
+						if (UnitAtTile && UnitAtTile->GetPlayerIndex() != 0)
+						{
+							return; // 다른 플레이어의 유닛이면 클릭 무시
+						}
+					}
+					
+					UnitManager->HandleCombatSelection(TileData);
 				}
 			}
 		}

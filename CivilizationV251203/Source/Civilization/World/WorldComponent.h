@@ -214,7 +214,7 @@ public:
     int32 CalculateBaseMovementCost(UWorldTile* Tile) const; // 기본 이동 비용 계산
 
     UFUNCTION(BlueprintCallable, Category = "Tile Calculation")
-    int32 CalculateBaseDefenseBonus(UWorldTile* Tile) const; // 기본 방어 보너스 계산
+    int32 CalculateCombatBonus(UWorldTile* Tile) const; // 기본 전투 보너스 계산
 
     // 지형 생성 알고리즘
     UFUNCTION(BlueprintCallable, Category = "World Generation")

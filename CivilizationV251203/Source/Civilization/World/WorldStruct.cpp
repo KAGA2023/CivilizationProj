@@ -238,16 +238,16 @@ int32 UWorldTile::GetTotalMovementCost() const
     return TotalMovementCost;
 }
 
-int32 UWorldTile::GetTotalDefenseBonus() const
+int32 UWorldTile::GetTotalCombatBonus() const
 {
-    int32 BaseDefenseBonus = m_TileData.CachedDefenseBonus;
+    int32 BaseCombatBonus = m_TileData.CachedCombatBonus;
     
-    // 모든 모디파이어의 방어 보너스를 더함
-    int32 TotalDefenseBonus = BaseDefenseBonus;
+    // 모든 모디파이어의 전투 보너스를 더함
+    int32 TotalCombatBonus = BaseCombatBonus;
     for (const FTileModifier& Modifier : m_TileModifiers)
     {
-        TotalDefenseBonus += Modifier.DefenseBonus;
+        TotalCombatBonus += Modifier.CombatBonus;
     }
     
-    return TotalDefenseBonus;
+    return TotalCombatBonus;
 }

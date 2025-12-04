@@ -110,7 +110,7 @@ struct CIVILIZATION_API FClimateData : public FTableRowBase
     int32 MovementCost = 0; // 이동 비용 증가량
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Climate")
-    int32 BaseDefenseBonus = 0; // 기본 방어 보너스
+    int32 BaseCombatBonus = 0; // 기본 전투 보너스
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Climate")
     UStaticMesh* TileMesh = nullptr; // 기후 메시
@@ -127,7 +127,7 @@ struct CIVILIZATION_API FClimateData : public FTableRowBase
         BaseScienceYield = 0;
         BaseFaithYield = 0;
         MovementCost = 0;
-        BaseDefenseBonus = 0;
+        BaseCombatBonus = 0;
         TileMesh = nullptr;
         ForestMesh = nullptr;
     }
@@ -161,7 +161,7 @@ struct CIVILIZATION_API FLandTypeData : public FTableRowBase
     int32 MovementCost = 0; // 이동 비용 증가량
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Land Type")
-    int32 DefenseBonus = 0; // 방어 보너스
+    int32 CombatBonus = 0; // 전투 보너스
 
     FLandTypeData()
     {
@@ -172,7 +172,7 @@ struct CIVILIZATION_API FLandTypeData : public FTableRowBase
         ScienceBonus = 0;
         FaithBonus = 0;
         MovementCost = 0;
-        DefenseBonus = 0;
+        CombatBonus = 0;
     }
 };
 
@@ -378,7 +378,7 @@ struct CIVILIZATION_API FTileModifier
     int32 MovementCost = 0; // 이동 비용 증가량
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tile Modifier")
-    int32 DefenseBonus = 0; // 방어 보너스
+    int32 CombatBonus = 0; // 전투 보너스
 
     // 모디파이어 비교용 연산자
     bool operator==(const FTileModifier& Other) const
@@ -389,7 +389,7 @@ struct CIVILIZATION_API FTileModifier
                AddScience == Other.AddScience && 
                AddFaith == Other.AddFaith &&
                MovementCost == Other.MovementCost &&
-               DefenseBonus == Other.DefenseBonus;
+               CombatBonus == Other.CombatBonus;
     }
 
     FTileModifier()
@@ -400,7 +400,7 @@ struct CIVILIZATION_API FTileModifier
         AddScience = 0;
         AddFaith = 0;
         MovementCost = 0;
-        DefenseBonus = 0;
+        CombatBonus = 0;
     }
 };
 
@@ -471,7 +471,7 @@ struct CIVILIZATION_API FTileData
     int32 CachedMovementCost = 1; // 캐시된 이동 비용
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Calculated")
-    int32 CachedDefenseBonus = 0; // 캐시된 방어 보너스
+    int32 CachedCombatBonus = 0; // 캐시된 전투 보너스
 
     FTileData()
     {
@@ -493,7 +493,7 @@ struct CIVILIZATION_API FTileData
         CachedScienceYield = 0;
         CachedFaithYield = 0;
         CachedMovementCost = 1;
-        CachedDefenseBonus = 0;
+        CachedCombatBonus = 0;
     }
 };
 
@@ -676,7 +676,7 @@ public:
     int32 GetTotalMovementCost() const; // 총 이동 비용 (기본 + 모디파이어)
 
     UFUNCTION(BlueprintCallable, Category = "Tile Modifier")
-    int32 GetTotalDefenseBonus() const; // 총 방어 보너스 (기본 + 모디파이어)
+    int32 GetTotalCombatBonus() const; // 총 전투 보너스 (기본 + 모디파이어)
 
 
     // 소유 상태
@@ -721,7 +721,7 @@ public:
     int32 GetMovementCost() const { return m_TileData.CachedMovementCost; }
 
     UFUNCTION(BlueprintCallable, Category = "World Tile")
-    int32 GetDefenseBonus() const { return m_TileData.CachedDefenseBonus; }
+    int32 GetCombatBonus() const { return m_TileData.CachedCombatBonus; }
 
     // 선택 상태
     UFUNCTION(BlueprintCallable, Category = "World Tile")

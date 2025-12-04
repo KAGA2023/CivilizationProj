@@ -89,7 +89,7 @@ public:
     TArray<class AUnitCharacterBase*> GetAllUnits() const; // 모든 유닛 가져오기
 
     UFUNCTION(BlueprintCallable, Category = "Unit Management")
-    void RemoveUnit(class AUnitCharacterBase* Unit); // 유닛 제거
+    void DestroyUnit(class AUnitCharacterBase* Unit, FVector2D HexPosition); // 유닛 완전 제거, 죽을때 사용 (HexToUnitMap에서 먼저 제거 후 Destroy)
 
     UFUNCTION(BlueprintCallable, Category = "Unit Management")
     void ClearAllUnits(); // 모든 유닛 제거
@@ -106,7 +106,7 @@ public:
     bool SetUnitAtHex(FVector2D HexPosition, class AUnitCharacterBase* Unit); // 육각형 좌표에 유닛 설정
 
     UFUNCTION(BlueprintCallable, Category = "Unit Management")
-    void RemoveUnitFromHex(FVector2D HexPosition); // 육각형 좌표에서 유닛 제거
+    void RemoveUnitFromHex(FVector2D HexPosition); // 육각형 좌표에서 유닛 제거, 이동할때 사용, 죽을때 사용하지 말것
 
     UFUNCTION(BlueprintCallable, Category = "Unit Management")
     bool CanPlaceUnitAtHex(FVector2D HexPosition) const; // 해당 위치에 유닛 배치 가능 여부
@@ -119,24 +119,28 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Unit Management")
     bool IsBuilderUnit(class AUnitCharacterBase* Unit) const; // 건설자 유닛인지 확인
 
-    // 유닛 선택 및 이동 시스템
-    UFUNCTION(BlueprintCallable, Category = "Unit Selection")
-    void HandleTwoTileClick(class UWorldTile* ClickedTile); // 2단계 타일 클릭 처리 (유닛 이동용)
+    // 전투 유닛 판단
+    UFUNCTION(BlueprintCallable, Category = "Unit Management")
+    bool IsCombatUnit(class AUnitCharacterBase* Unit) const; // 전투 유닛인지 확인
 
-    UFUNCTION(BlueprintCallable, Category = "Unit Selection")
-    void ClearSelection(); // 선택 초기화
+    // 이동 선택 시스템
+    UFUNCTION(BlueprintCallable, Category = "Move Selection")
+    void HandleMoveSelection(class UWorldTile* ClickedTile); // 이동용 2단계 타일 클릭 처리
 
-    UFUNCTION(BlueprintCallable, Category = "Unit Selection")
-    class UWorldTile* GetFirstSelectedTile() const { return FirstSelectedTile; } // 첫 번째 선택된 타일 가져오기
+    UFUNCTION(BlueprintCallable, Category = "Move Selection")
+    void ClearMoveSelection(); // 이동 선택 초기화
 
-    UFUNCTION(BlueprintCallable, Category = "Unit Selection")
-    class UWorldTile* GetSecondSelectedTile() const { return SecondSelectedTile; } // 두 번째 선택된 타일 가져오기
+    UFUNCTION(BlueprintCallable, Category = "Move Selection")
+    class UWorldTile* GetMoveFirstSelectedTile() const { return MoveFirstSelectedTile; } // 첫 번째 선택된 이동 타일 가져오기
 
-    UFUNCTION(BlueprintCallable, Category = "Unit Selection")
-    bool HasFirstSelection() const { return FirstSelectedTile != nullptr; } // 첫 번째 선택 여부
+    UFUNCTION(BlueprintCallable, Category = "Move Selection")
+    class UWorldTile* GetMoveSecondSelectedTile() const { return MoveSecondSelectedTile; } // 두 번째 선택된 이동 타일 가져오기
 
-    UFUNCTION(BlueprintCallable, Category = "Unit Selection")
-    bool HasSecondSelection() const { return SecondSelectedTile != nullptr; } // 두 번째 선택 여부
+    UFUNCTION(BlueprintCallable, Category = "Move Selection")
+    bool HasMoveFirstSelection() const { return MoveFirstSelectedTile != nullptr; } // 첫 번째 이동 선택 여부
+
+    UFUNCTION(BlueprintCallable, Category = "Move Selection")
+    bool HasMoveSecondSelection() const { return MoveSecondSelectedTile != nullptr; } // 두 번째 이동 선택 여부
 
     // 내부 유닛 이동 함수
     void MoveUnitFromFirstToSecondSelection(); // 첫 번째 선택에서 두 번째 선택으로 유닛 이동
@@ -179,6 +183,29 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Floor System")
     int32 GetMovementCostBetweenHexesWithFloor(FVector2D FromHex, FVector2D ToHex) const; // 층수를 고려한 이동 비용 계산
 
+    // 전투 선택 시스템
+    UFUNCTION(BlueprintCallable, Category = "Combat Selection")
+    void HandleCombatSelection(class UWorldTile* ClickedTile); // 전투용 2단계 타일 클릭 처리
+
+    UFUNCTION(BlueprintCallable, Category = "Combat Selection")
+    void ClearCombatSelection(); // 전투 선택 초기화
+
+    UFUNCTION(BlueprintCallable, Category = "Combat Selection")
+    class UWorldTile* GetCombatFirstSelectedTile() const { return CombatFirstSelectedTile; } // 첫 번째 선택된 전투 타일 가져오기
+
+    UFUNCTION(BlueprintCallable, Category = "Combat Selection")
+    class UWorldTile* GetCombatSecondSelectedTile() const { return CombatSecondSelectedTile; } // 두 번째 선택된 전투 타일 가져오기
+
+    UFUNCTION(BlueprintCallable, Category = "Combat Selection")
+    bool HasCombatFirstSelection() const { return CombatFirstSelectedTile != nullptr; } // 첫 번째 전투 선택 여부
+
+    UFUNCTION(BlueprintCallable, Category = "Combat Selection")
+    bool HasCombatSecondSelection() const { return CombatSecondSelectedTile != nullptr; } // 두 번째 전투 선택 여부
+
+    // 전투 실행 함수
+    UFUNCTION(BlueprintCallable, Category = "Combat")
+    void ExecuteCombatBetweenSelectedUnits(); // 선택된 유닛들 간 전투 실행
+
 private:
     // 월드 컴포넌트 참조
     UPROPERTY()
@@ -192,11 +219,18 @@ private:
     UPROPERTY()
     TMap<FVector2D, class AUnitCharacterBase*> HexToUnitMap;
 
-    // 2단계 선택 시스템 (유닛 이동용)
+    // 이동용 2단계 선택 시스템
     UPROPERTY()
-    class UWorldTile* FirstSelectedTile = nullptr; // 첫 번째 선택된 타일
+    class UWorldTile* MoveFirstSelectedTile = nullptr; // 첫 번째 선택된 이동 유닛 타일
 
     UPROPERTY()
-    class UWorldTile* SecondSelectedTile = nullptr; // 두 번째 선택된 타일
+    class UWorldTile* MoveSecondSelectedTile = nullptr; // 두 번째 선택된 이동 유닛 타일
+
+    // 전투용 2단계 선택 시스템
+    UPROPERTY()
+    class UWorldTile* CombatFirstSelectedTile = nullptr; // 첫 번째 선택된 전투 유닛 타일
+
+    UPROPERTY()
+    class UWorldTile* CombatSecondSelectedTile = nullptr; // 두 번째 선택된 전투 유닛 타일
 
 };

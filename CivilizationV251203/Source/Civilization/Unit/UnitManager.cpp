@@ -3,6 +3,8 @@
 #include "UnitManager.h"
 #include "UnitCharacterBase.h"
 #include "../Status/UnitStatusComponent.h"
+#include "../Combat/UnitCombatComponent.h"
+#include "../Combat/UnitCombatStruct.h"
 #include "../World/WorldComponent.h"
 #include "../SuperGameInstance.h"
 #include "../SuperPlayerState.h"
@@ -123,37 +125,37 @@ TArray<AUnitCharacterBase*> UUnitManager::GetAllUnits() const
     return SpawnedUnits;
 }
 
-void UUnitManager::RemoveUnit(AUnitCharacterBase* Unit)
+void UUnitManager::DestroyUnit(AUnitCharacterBase* Unit, FVector2D HexPosition)
 {
-    if (Unit && SpawnedUnits.Contains(Unit))
+    if (!Unit || !SpawnedUnits.Contains(Unit))
     {
-        // 플레이어 스테이트에서 유닛 제거
-        int32 UnitPlayerIndex = Unit->GetPlayerIndex();
-        if (UnitPlayerIndex >= 0)
+        return;
+    }
+    
+    // 1. 먼저 HexToUnitMap에서 제거 (안전하게 먼저 처리)
+    RemoveUnitFromHex(HexPosition);
+    
+    // 2. 플레이어 스테이트에서 유닛 제거
+    int32 UnitPlayerIndex = Unit->GetPlayerIndex();
+    if (UnitPlayerIndex >= 0)
+    {
+        if (UWorld* World = GetWorld())
         {
-            if (UWorld* World = GetWorld())
+            if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
             {
-                if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
+                if (ASuperPlayerState* PlayerState = SuperGameInst->GetPlayerState(UnitPlayerIndex))
                 {
-                    if (ASuperPlayerState* PlayerState = SuperGameInst->GetPlayerState(UnitPlayerIndex))
-                    {
-                        PlayerState->RemoveOwnedUnit(Unit);
-                    }
+                    PlayerState->RemoveOwnedUnit(Unit);
                 }
             }
         }
-
-        // 유닛의 현재 위치를 찾아서 제거
-        if (WorldComponent)
-        {
-            // 유닛의 월드 위치를 육각형 좌표로 변환
-            FVector2D HexPos = WorldComponent->WorldToHex(Unit->GetActorLocation());
-            RemoveUnitFromHex(HexPos);
-        }
-        
-        SpawnedUnits.Remove(Unit);
-        Unit->Destroy();
     }
+    
+    // 3. SpawnedUnits에서 제거
+    SpawnedUnits.Remove(Unit);
+    
+    // 4. 유닛 Destroy
+    Unit->Destroy();
 }
 
 void UUnitManager::ClearAllUnits()
@@ -272,8 +274,8 @@ bool UUnitManager::CanPlaceUnitAtHex(FVector2D HexPosition) const
     return true;
 }
 
-// 유닛 선택 및 이동 시스템 구현
-void UUnitManager::HandleTwoTileClick(UWorldTile* ClickedTile)
+// 이동 선택 시스템 구현
+void UUnitManager::HandleMoveSelection(UWorldTile* ClickedTile)
 {
     if (!ClickedTile || !WorldComponent)
     {
@@ -283,7 +285,7 @@ void UUnitManager::HandleTwoTileClick(UWorldTile* ClickedTile)
     FVector2D HexPos = ClickedTile->GetGridPosition();
     
     // 첫 번째 선택이 없으면 첫 번째로 설정
-    if (!HasFirstSelection())
+    if (!HasMoveFirstSelection())
     {
         // 해당 타일에 유닛이 있는지 확인
         AUnitCharacterBase* UnitAtTile = GetUnitAtHex(HexPos);
@@ -292,14 +294,21 @@ void UUnitManager::HandleTwoTileClick(UWorldTile* ClickedTile)
             return; // 유닛이 없으면 선택하지 않음
         }
         
-        FirstSelectedTile = ClickedTile;
-        FirstSelectedTile->SetSelected(true);
+        MoveFirstSelectedTile = ClickedTile;
+        MoveFirstSelectedTile->SetSelected(true);
     }
     // 첫 번째 선택이 있고 두 번째 선택이 없으면 두 번째로 설정
-    else if (!HasSecondSelection())
+    else if (!HasMoveSecondSelection())
     {
-        SecondSelectedTile = ClickedTile;
-        SecondSelectedTile->SetSelected(true);
+        // 같은 타일을 선택한 경우 즉시 선택 초기화
+        if (MoveFirstSelectedTile && MoveFirstSelectedTile->GetGridPosition() == HexPos)
+        {
+            ClearMoveSelection(); // 첫 번째 선택까지 모두 초기화
+            return;
+        }
+        
+        MoveSecondSelectedTile = ClickedTile;
+        MoveSecondSelectedTile->SetSelected(true);
         
         // 유닛 이동 실행
         MoveUnitFromFirstToSecondSelection();
@@ -308,38 +317,38 @@ void UUnitManager::HandleTwoTileClick(UWorldTile* ClickedTile)
     }
 }
 
-void UUnitManager::ClearSelection()
+void UUnitManager::ClearMoveSelection()
 {
     // 기존 선택 해제
-    if (FirstSelectedTile)
+    if (MoveFirstSelectedTile)
     {
-        FirstSelectedTile->SetSelected(false);
-        FirstSelectedTile = nullptr;
+        MoveFirstSelectedTile->SetSelected(false);
+        MoveFirstSelectedTile = nullptr;
     }
     
-    if (SecondSelectedTile)
+    if (MoveSecondSelectedTile)
     {
-        SecondSelectedTile->SetSelected(false);
-        SecondSelectedTile = nullptr;
+        MoveSecondSelectedTile->SetSelected(false);
+        MoveSecondSelectedTile = nullptr;
     }
 }
 
 void UUnitManager::MoveUnitFromFirstToSecondSelection()
 {
-    if (!FirstSelectedTile || !SecondSelectedTile || !WorldComponent)
+    if (!MoveFirstSelectedTile || !MoveSecondSelectedTile || !WorldComponent)
     {
-        ClearSelection(); // 선택 초기화
+        ClearMoveSelection(); // 선택 초기화
         return;
     }
     
-    FVector2D FirstHexPos = FirstSelectedTile->GetGridPosition();
-    FVector2D SecondHexPos = SecondSelectedTile->GetGridPosition();
+    FVector2D FirstHexPos = MoveFirstSelectedTile->GetGridPosition();
+    FVector2D SecondHexPos = MoveSecondSelectedTile->GetGridPosition();
     
     // 첫 번째 타일의 유닛 가져오기
     AUnitCharacterBase* UnitToMove = GetUnitAtHex(FirstHexPos);
     if (!UnitToMove)
     {
-        ClearSelection(); // 선택 초기화
+        ClearMoveSelection(); // 선택 초기화
         return;
     }
     
@@ -348,7 +357,7 @@ void UUnitManager::MoveUnitFromFirstToSecondSelection()
     {
         if (!StatusComp->CanMove())
         {
-            ClearSelection(); // 선택 초기화
+            ClearMoveSelection(); // 선택 초기화
             return; // 이동할 수 없는 상태
         }
     }
@@ -356,7 +365,7 @@ void UUnitManager::MoveUnitFromFirstToSecondSelection()
     // 두 번째 타일이 이동 가능한지 확인
     if (!CanPlaceUnitAtHex(SecondHexPos))
     {
-        ClearSelection(); // 선택 초기화
+        ClearMoveSelection(); // 선택 초기화
         return;
     }
     
@@ -366,7 +375,7 @@ void UUnitManager::MoveUnitFromFirstToSecondSelection()
     // 경로가 없거나 유효하지 않으면 이동하지 않음
     if (Path.Num() <= 1)
     {
-        ClearSelection(); // 선택 초기화
+        ClearMoveSelection(); // 선택 초기화
         return;
     }
     
@@ -379,7 +388,7 @@ void UUnitManager::MoveUnitFromFirstToSecondSelection()
     // 제한된 경로가 없으면 이동하지 않음
     if (LimitedPath.Num() <= 1)
     {
-        ClearSelection(); // 선택 초기화
+        ClearMoveSelection(); // 선택 초기화
         return;
     }
     
@@ -801,7 +810,7 @@ void UUnitManager::StartVisualMovement(AUnitCharacterBase* Unit, const TArray<FV
 void UUnitManager::CompleteMovement()
 {
     // 선택 초기화
-    ClearSelection();
+    ClearMoveSelection();
 }
 
 void UUnitManager::OnUnitMovementComplete(AUnitCharacterBase* Unit, FVector2D FinalHex)
@@ -825,6 +834,190 @@ void UUnitManager::OnUnitMovementComplete(AUnitCharacterBase* Unit, FVector2D Fi
     }
     
     // 선택 초기화
-    ClearSelection();
+    ClearMoveSelection();
+}
+
+// 전투 유닛 판단 함수
+bool UUnitManager::IsCombatUnit(AUnitCharacterBase* Unit) const
+{
+    if (!Unit)
+    {
+        return false;
+    }
+
+    UUnitStatusComponent* StatusComp = Unit->GetUnitStatusComponent();
+    if (!StatusComp)
+    {
+        return false;
+    }
+
+    // BaseStat에서 CanAttack 확인 (전투 가능한 유닛)
+    FUnitBaseStat BaseStat = StatusComp->GetBaseStat();
+    return BaseStat.CanAttack;
+}
+
+// 전투 선택 시스템
+void UUnitManager::HandleCombatSelection(UWorldTile* ClickedTile)
+{
+    if (!ClickedTile || !WorldComponent)
+    {
+        return;
+    }
+    
+    FVector2D HexPos = ClickedTile->GetGridPosition();
+    
+    // 첫 번째 선택이 없으면 첫 번째로 설정
+    if (!HasCombatFirstSelection())
+    {
+        // 해당 타일에 유닛이 있는지 확인
+        AUnitCharacterBase* UnitAtTile = GetUnitAtHex(HexPos);
+        if (!UnitAtTile)
+        {
+            return; // 유닛이 없으면 선택하지 않음
+        }
+        
+        // 전투 유닛인지 확인
+        if (!IsCombatUnit(UnitAtTile))
+        {
+            return; // 전투 유닛이 아니면 선택하지 않음
+        }
+        
+        // 공격 가능한 상태인지 확인
+        if (UUnitStatusComponent* StatusComp = UnitAtTile->GetUnitStatusComponent())
+        {
+            if (!StatusComp->CanAttack())
+            {
+                return; // 공격할 수 없는 상태
+            }
+            
+            // Range = 0 체크 (전투 불가)
+            if (StatusComp->GetRange() == 0)
+            {
+                return; // Range = 0은 전투 불가
+            }
+        }
+        
+        CombatFirstSelectedTile = ClickedTile;
+        CombatFirstSelectedTile->SetSelected(true);
+    }
+    // 첫 번째 선택이 있고 두 번째 선택이 없으면 두 번째로 설정
+    else if (!HasCombatSecondSelection())
+    {
+        // 해당 타일에 유닛이 있는지 확인
+        AUnitCharacterBase* UnitAtTile = GetUnitAtHex(HexPos);
+        if (!UnitAtTile)
+        {
+            return; // 유닛이 없으면 선택하지 않음
+        }
+        
+        // 같은 타일을 선택한 경우 즉시 선택 초기화
+        if (CombatFirstSelectedTile && CombatFirstSelectedTile->GetGridPosition() == HexPos)
+        {
+            ClearCombatSelection(); // 첫 번째 선택까지 모두 초기화
+            return;
+        }
+        
+        // 사거리 검증
+        AUnitCharacterBase* Attacker = GetUnitAtHex(CombatFirstSelectedTile->GetGridPosition());
+        if (Attacker && Attacker->GetUnitStatusComponent())
+        {
+            int32 AttackRange = Attacker->GetUnitStatusComponent()->GetRange();
+            int32 HexDistance = WorldComponent->GetHexDistance(CombatFirstSelectedTile->GetGridPosition(), HexPos);
+            
+            // 사거리 밖이면 선택 초기화
+            if (HexDistance > AttackRange)
+            {
+                ClearCombatSelection(); // 첫 번째 선택도 초기화
+                return;
+            }
+        }
+        
+        CombatSecondSelectedTile = ClickedTile;
+        CombatSecondSelectedTile->SetSelected(true);
+        
+        // 전투 실행
+        ExecuteCombatBetweenSelectedUnits();
+        
+        // 선택 초기화
+        ClearCombatSelection();
+    }
+}
+
+// 전투 선택 초기화
+void UUnitManager::ClearCombatSelection()
+{
+    if (CombatFirstSelectedTile)
+    {
+        CombatFirstSelectedTile->SetSelected(false);
+        CombatFirstSelectedTile = nullptr;
+    }
+    
+    if (CombatSecondSelectedTile)
+    {
+        CombatSecondSelectedTile->SetSelected(false);
+        CombatSecondSelectedTile = nullptr;
+    }
+}
+
+// 전투 실행 함수
+void UUnitManager::ExecuteCombatBetweenSelectedUnits()
+{
+    if (!CombatFirstSelectedTile || !CombatSecondSelectedTile || !WorldComponent)
+    {
+        return;
+    }
+    
+    FVector2D FirstHexPos = CombatFirstSelectedTile->GetGridPosition();
+    FVector2D SecondHexPos = CombatSecondSelectedTile->GetGridPosition();
+    
+    // 첫 번째 타일의 유닛 가져오기 (공격자)
+    AUnitCharacterBase* Attacker = GetUnitAtHex(FirstHexPos);
+    // 두 번째 타일의 유닛 가져오기 (방어자)
+    AUnitCharacterBase* Defender = GetUnitAtHex(SecondHexPos);
+    
+    if (!Attacker || !Defender)
+    {
+        return;
+    }
+    
+    // 전투 컴포넌트 가져오기 (공격자의 컴포넌트 사용)
+    UUnitCombatComponent* CombatComp = Attacker->GetUnitCombatComponent();
+    if (!CombatComp)
+    {
+        return;
+    }
+    
+    // 전투 가능 여부 확인
+    if (!CombatComp->CanExecuteCombat(Attacker, Defender))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("전투 실행 불가능"));
+        return;
+    }
+    
+    // 거리 계산
+    int32 HexDistance = WorldComponent->GetHexDistance(FirstHexPos, SecondHexPos);
+    
+    // 전투 실행 (거리 및 HexPosition 파라미터 전달)
+    FCombatResult CombatResult = CombatComp->ExecuteCombat(Attacker, Defender, HexDistance, FirstHexPos, SecondHexPos);
+    
+    // 디버그 로그 출력
+    UE_LOG(LogTemp, Warning, TEXT("=== 전투 결과 ==="));
+    UE_LOG(LogTemp, Warning, TEXT("공격자 생존: %s"), CombatResult.bAttackerAlive ? TEXT("생존") : TEXT("사망"));
+    UE_LOG(LogTemp, Warning, TEXT("방어자 생존: %s"), CombatResult.bDefenderAlive ? TEXT("생존") : TEXT("사망"));
+    UE_LOG(LogTemp, Warning, TEXT("공격자가 준 데미지: %d"), CombatResult.AttackerDamageDealt);
+    UE_LOG(LogTemp, Warning, TEXT("방어자가 준 데미지: %d"), CombatResult.DefenderDamageDealt);
+    UE_LOG(LogTemp, Warning, TEXT("공격자가 받은 데미지: %d"), CombatResult.AttackerDamageTaken);
+    UE_LOG(LogTemp, Warning, TEXT("방어자가 받은 데미지: %d"), CombatResult.DefenderDamageTaken);
+    
+    // 유닛이 죽었으면 제거
+    if (!CombatResult.bAttackerAlive && Attacker)
+    {
+        DestroyUnit(Attacker, FirstHexPos);
+    }
+    
+    if (!CombatResult.bDefenderAlive && Defender)
+    {
+        DestroyUnit(Defender, SecondHexPos);
+    }
 }
 
