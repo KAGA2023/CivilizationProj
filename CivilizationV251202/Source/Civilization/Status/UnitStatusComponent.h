@@ -104,6 +104,9 @@ public:
 
     // 상태 설정
     UFUNCTION(BlueprintCallable, Category = "Unit Status")
+    void SetHasAttacked(bool bHasAttacked);
+
+    UFUNCTION(BlueprintCallable, Category = "Unit Status")
     void SetWait(bool bWait);
 
     UFUNCTION(BlueprintCallable, Category = "Unit Status")

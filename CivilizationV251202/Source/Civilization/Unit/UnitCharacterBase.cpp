@@ -2,6 +2,7 @@
 
 #include "UnitCharacterBase.h"
 #include "../Status/UnitStatusComponent.h"
+#include "../Combat/UnitCombatComponent.h"
 #include "../Status/UnitDataStruct.h"
 #include "../AICon/UnitAIController.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -24,6 +25,9 @@ AUnitCharacterBase::AUnitCharacterBase()
 
     // 유닛 상태 컴포넌트 생성
     UnitStatusComponent = CreateDefaultSubobject<UUnitStatusComponent>(TEXT("UnitStatusComponent"));
+
+    // 유닛 전투 컴포넌트 생성
+    UnitCombatComponent = CreateDefaultSubobject<UUnitCombatComponent>(TEXT("UnitCombatComponent"));
 
     // 캐릭터 이동 설정
     if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())

@@ -9,6 +9,7 @@
 #include "UnitCharacterBase.generated.h"
 
 class UUnitStatusComponent;
+class UUnitCombatComponent;
 class UDataTable;
 class AUnitAIController;
 
@@ -24,6 +25,10 @@ protected:
     // 유닛 상태 컴포넌트
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Unit Status")
     UUnitStatusComponent* UnitStatusComponent;
+
+    // 유닛 전투 컴포넌트
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Unit Combat")
+    UUnitCombatComponent* UnitCombatComponent;
 
     // 데이터 테이블 참조 (시각적 데이터만)
     UPROPERTY()
@@ -44,6 +49,10 @@ public:
     // 상태 컴포넌트 접근
     UFUNCTION(BlueprintCallable, Category = "Unit Status")
     UUnitStatusComponent* GetUnitStatusComponent() const { return UnitStatusComponent; }
+
+    // 전투 컴포넌트 접근
+    UFUNCTION(BlueprintCallable, Category = "Unit Combat")
+    UUnitCombatComponent* GetUnitCombatComponent() const { return UnitCombatComponent; }
 
     // 플레이어 소유 정보 접근
     UFUNCTION(BlueprintCallable, Category = "Player Ownership")

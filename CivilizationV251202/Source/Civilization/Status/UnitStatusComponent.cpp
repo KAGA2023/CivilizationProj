@@ -137,6 +137,11 @@ bool UUnitStatusComponent::CanAttack() const
     return !m_CurrentStat.HasAttacked;
 }
 
+void UUnitStatusComponent::SetHasAttacked(bool bHasAttacked)
+{
+    m_CurrentStat.HasAttacked = bHasAttacked;
+}
+
 void UUnitStatusComponent::SetWait(bool bWait)
 {
     m_CurrentStat.IsWait = bWait;

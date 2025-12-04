@@ -17,10 +17,9 @@ enum class EUnitClass : uint8
     Warrior             UMETA(DisplayName = "Warrior"),           // 전사
     Archer              UMETA(DisplayName = "Archer"),            // 궁수
     Spearman            UMETA(DisplayName = "Spearman"),          // 창병
-    Horseman            UMETA(DisplayName = "Horseman"),          // 기병
-    Knight              UMETA(DisplayName = "Knight"),            // 기사
+    Halberdier          UMETA(DisplayName = "Halberdier"),        // 할버드병
     // 특수 유닛
-    Builder             UMETA(DisplayName = "Builder"),          // 건설자
+    Builder             UMETA(DisplayName = "Builder"),           // 건설자
     Scout               UMETA(DisplayName = "Scout"),             // 정찰병
 };
 
