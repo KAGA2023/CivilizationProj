@@ -517,6 +517,9 @@ void AWorldTileActor::OnBeginCursorOver(UPrimitiveComponent* TouchedComponent)
 	{
 		WorldComp->HandleTileHoverBegin(TileData);
 	}
+	
+	// 전투 호버 델리게이트 브로드캐스트
+	OnCombatTileHoverBegin.Broadcast(TileData);
 }
 
 void AWorldTileActor::OnEndCursorOver(UPrimitiveComponent* TouchedComponent)
@@ -526,6 +529,9 @@ void AWorldTileActor::OnEndCursorOver(UPrimitiveComponent* TouchedComponent)
 	{
 		WorldComp->HandleTileHoverEnd(TileData);
 	}
+	
+	// 전투 호버 델리게이트 브로드캐스트
+	OnCombatTileHoverEnd.Broadcast(TileData);
 }
 
 void AWorldTileActor::SetSelected(bool bSelected)

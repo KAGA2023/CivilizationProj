@@ -1022,15 +1022,15 @@ void UUnitManager::ExecuteCombatBetweenSelectedUnits()
         return;
     }
     
-    // 전투 가능 여부 확인
-    if (!CombatComp->CanExecuteCombat(Attacker, Defender))
+    // 거리 계산
+    int32 HexDistance = WorldComponent->GetHexDistance(FirstHexPos, SecondHexPos);
+    
+    // 전투 가능 여부 확인 (Hex 좌표 포함하여 사거리/층수 검증)
+    if (!CombatComp->CanExecuteCombat(Attacker, Defender, FirstHexPos, SecondHexPos))
     {
         UE_LOG(LogTemp, Warning, TEXT("전투 실행 불가능"));
         return;
     }
-    
-    // 거리 계산
-    int32 HexDistance = WorldComponent->GetHexDistance(FirstHexPos, SecondHexPos);
     
     // 전투 실행 (거리 및 HexPosition 파라미터 전달)
     FCombatResult CombatResult = CombatComp->ExecuteCombat(Attacker, Defender, HexDistance, FirstHexPos, SecondHexPos);
@@ -1054,5 +1054,8 @@ void UUnitManager::ExecuteCombatBetweenSelectedUnits()
     {
         DestroyUnit(Defender, SecondHexPos);
     }
+    
+    // 전투 실행 완료 델리게이트 브로드캐스트
+    OnCombatExecuted.Broadcast();
 }
 

@@ -112,6 +112,35 @@ protected:
 	UFUNCTION()
 	void CloseFacilityUI();
 
+	// UnitCombatUI 위젯 참조 (블루프린트에서 수동 할당)
+	UPROPERTY(BlueprintReadWrite, Category = "Widgets")
+	class UUnitCombatUI* UnitCombatUIWidget = nullptr;
+
+	// 현재 열린 전투 타일 좌표 추적
+	FVector2D CurrentCombatHoverTile = FVector2D::ZeroVector;
+	bool bIsCombatUIOpen = false;
+
+	// 전투 타일 호버 델리게이트 바인딩 함수
+	UFUNCTION(BlueprintCallable, Category = "HUD")
+	void BindCombatTileHoverDelegates();
+
+	// UnitManager의 전투 실행 완료 델리게이트 바인딩
+	void BindCombatExecutedDelegate();
+
+	// 전투 타일 호버 핸들러 함수들
+	UFUNCTION()
+	void OnCombatTileHoverBeginHandler(class UWorldTile* Tile);
+
+	UFUNCTION()
+	void OnCombatTileHoverEndHandler(class UWorldTile* Tile);
+
+	// 전투 실행 완료 핸들러
+	UFUNCTION()
+	void OnCombatExecutedHandler();
+
+	// 전투 UI 닫기 함수
+	void CloseCombatUI();
+
 	// 0.5초 지연 후 바인딩을 위한 타이머
 	FTimerHandle BindCityTileTimerHandle;
 
@@ -120,6 +149,9 @@ protected:
 
 	// 0.5초 지연 후 바인딩을 위한 타이머
 	FTimerHandle BindGeneralTileTimerHandle;
+
+	// 0.5초 지연 후 바인딩을 위한 타이머
+	FTimerHandle BindCombatTileHoverTimerHandle;
 
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;

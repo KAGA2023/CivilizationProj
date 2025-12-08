@@ -27,8 +27,8 @@ FCombatResult UUnitCombatComponent::ExecuteCombat(AUnitCharacterBase* Attacker, 
 {
     FCombatResult Result;
 
-    // 1. 전투 전 검증
-    if (!CanExecuteCombat(Attacker, Defender))
+    // 1. 전투 전 검증 (Hex 좌표 포함하여 사거리/층수 검증)
+    if (!CanExecuteCombat(Attacker, Defender, AttackerHex, DefenderHex))
     {
         return Result;
     }
@@ -126,7 +126,7 @@ FCombatResult UUnitCombatComponent::ExecuteCombat(AUnitCharacterBase* Attacker, 
     return Result;
 }
 
-bool UUnitCombatComponent::CanExecuteCombat(AUnitCharacterBase* Attacker, AUnitCharacterBase* Defender) const
+bool UUnitCombatComponent::CanExecuteCombat(AUnitCharacterBase* Attacker, AUnitCharacterBase* Defender, FVector2D AttackerHex, FVector2D DefenderHex) const
 {
     // 1. 유효성 검사
     if (!Attacker || !Defender)
@@ -166,10 +166,61 @@ bool UUnitCombatComponent::CanExecuteCombat(AUnitCharacterBase* Attacker, AUnitC
         return false;
     }
 
-    // 6. 사거리 확인 (향후 확장)
-    // int32 AttackRange = AttackerStatus->GetRange();
-    // float Distance = FVector::Dist(Attacker->GetActorLocation(), Defender->GetActorLocation());
-    // if (Distance > AttackRange) return false;
+    // 6. Hex 파라미터가 제공된 경우 사거리/층수 검증 추가
+    if (AttackerHex != FVector2D::ZeroVector && DefenderHex != FVector2D::ZeroVector)
+    {
+        // WorldComponent 가져오기
+        UWorld* World = GetWorld();
+        if (!World)
+        {
+            return false;
+        }
+
+        USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance());
+        if (!SuperGameInst)
+        {
+            return false;
+        }
+
+        UWorldComponent* WorldComponent = SuperGameInst->GetGeneratedWorldComponent();
+        if (!WorldComponent)
+        {
+            return false;
+        }
+
+        // 사거리 검증
+        int32 BaseAttackRange = AttackerStatus->GetRange();
+        int32 AttackRange = BaseAttackRange;
+
+        // 원거리 유닛인 경우 Range 보너스 적용
+        if (BaseAttackRange > 1)
+        {
+            int32 RangeBonus = CalculateRangeBonus(AttackerHex);
+            AttackRange += RangeBonus;
+        }
+
+        int32 HexDistance = WorldComponent->GetHexDistance(AttackerHex, DefenderHex);
+
+        // 사거리 밖이면 공격 불가
+        if (HexDistance > AttackRange)
+        {
+            return false;
+        }
+
+        // Range == 1인 근접 공격일 때만 층수 차이 체크
+        if (BaseAttackRange == 1)
+        {
+            int32 AttackerFloor = GetFloorLevelAtHex(AttackerHex);
+            int32 DefenderFloor = GetFloorLevelAtHex(DefenderHex);
+            int32 FloorDifference = FMath::Abs(AttackerFloor - DefenderFloor);
+
+            // 층수 차이가 2 이상이면 공격 불가
+            if (FloorDifference >= 2)
+            {
+                return false;
+            }
+        }
+    }
 
     return true;
 }
@@ -328,5 +379,52 @@ UUnitStatusComponent* UUnitCombatComponent::GetStatusComponent(AUnitCharacterBas
     }
 
     return Unit->GetUnitStatusComponent();
+}
+
+// 지형 보너스 텍스트 생성 (UI용)
+FText UUnitCombatComponent::GetTerrainBonusText(FVector2D MyHex, FVector2D EnemyHex, int32 UnitRange) const
+{
+    FString ResultText;
+    
+    // 층수 보너스와 숲 보너스는 Range가 1 이하인 근접 유닛만
+    if (UnitRange <= 1)
+    {
+        // 1. 층수 보너스 텍스트
+        int32 HeightBonus = CalculateHeightBonus(MyHex, EnemyHex);
+        
+        if (HeightBonus > 0)
+        {
+            ResultText += FString::Printf(TEXT("고지대 +%d"), HeightBonus);
+        }
+        
+        // 2. 숲 보너스 텍스트
+        int32 ForestBonus = CalculateForestBonus(MyHex);
+        
+        if (HeightBonus > 0)
+        {
+            ResultText += TEXT("\n");
+        }
+        if (ForestBonus > 0)
+        {
+            ResultText += FString::Printf(TEXT("숲지대 +%d"), ForestBonus);
+        }
+    }
+    
+    // 3. 사거리 보너스 텍스트 (Range가 2 이상인 원거리 유닛만)
+    if (UnitRange > 1)
+    {
+        int32 RangeBonus = CalculateRangeBonus(MyHex);
+        
+        if (RangeBonus > 0)
+        {
+            if (!ResultText.IsEmpty())
+            {
+                ResultText += TEXT("\n");
+            }
+            ResultText += FString::Printf(TEXT("사거리 +%d"), RangeBonus);
+        }
+    }
+    
+    return FText::FromString(ResultText);
 }
 

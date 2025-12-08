@@ -14,6 +14,10 @@
 #include "../World/WorldStruct.h"
 #include "StrategicResourceSlotUI.h"
 #include "UnitWidget/BuildFacilityUI.h"
+#include "CombatWidget/UnitCombatUI.h"
+#include "../Unit/UnitManager.h"
+#include "../Unit/UnitCharacterBase.h"
+#include "../Combat/UnitCombatComponent.h"
 #include "Engine/DataTable.h"
 #include "Kismet/GameplayStatics.h"
 
@@ -63,6 +67,7 @@ void UMainHUD::NativeConstruct()
 		GetWorld()->GetTimerManager().SetTimer(BindCityTileTimerHandle, this, &UMainHUD::BindCityTileClickedDelegates, 0.5f, false);
 		GetWorld()->GetTimerManager().SetTimer(BindBuilderTileTimerHandle, this, &UMainHUD::BindBuilderTileClickedDelegates, 0.5f, false);
 		GetWorld()->GetTimerManager().SetTimer(BindGeneralTileTimerHandle, this, &UMainHUD::BindGeneralTileClickedDelegates, 0.5f, false);
+		GetWorld()->GetTimerManager().SetTimer(BindCombatTileHoverTimerHandle, this, &UMainHUD::BindCombatTileHoverDelegates, 0.5f, false);
 	}
 
 	// BuildFacilityUI 위젯 초기화 (Hidden으로 설정)
@@ -71,11 +76,20 @@ void UMainHUD::NativeConstruct()
 		BuildFacilityUIWidget->SetVisibility(ESlateVisibility::Hidden);
 	}
 
+	// UnitCombatUI 위젯 초기화 (Hidden으로 설정)
+	if (UnitCombatUIWidget)
+	{
+		UnitCombatUIWidget->SetVisibility(ESlateVisibility::Hidden);
+	}
+
 	// PlayerState의 골드/인구 변경 델리게이트 바인딩
 	BindPlayerStateDelegates();
 
 	// FacilityManager의 시설 변경 델리게이트 바인딩
 	BindFacilityDelegates();
+
+	// UnitManager의 전투 실행 완료 델리게이트 바인딩
+	BindCombatExecutedDelegate();
 
 	// 전략 자원 슬롯 초기화
 	UpdateStrategicResourceSlots();
@@ -145,6 +159,10 @@ void UMainHUD::OnTurnChanged(FTurnStruct NewTurn)
 {
 	// 턴이 변경될 때마다 HUD 데이터 업데이트
 	UpdateHUDData();
+	
+	// 턴 종료 시 전투 UI 및 시설 UI 닫기
+	CloseCombatUI();
+	CloseFacilityUI();
 }
 
 void UMainHUD::OnPlayerCityTileClicked()
@@ -191,7 +209,7 @@ void UMainHUD::BindCityTileClickedDelegates()
 	{
 		return;
 	}
-
+	
 	// 모든 WorldTileActor 찾기
 	TArray<AActor*> FoundActors;
 	UGameplayStatics::GetAllActorsOfClass(GetWorld(), AWorldTileActor::StaticClass(), FoundActors);
@@ -246,6 +264,54 @@ void UMainHUD::BindGeneralTileClickedDelegates()
 			TileActor->OnGeneralTileClicked.AddDynamic(this, &UMainHUD::OnGeneralTileClickedHandler);
 		}
 	}
+}
+
+void UMainHUD::BindCombatTileHoverDelegates()
+{
+	if (!GetWorld())
+	{
+		return;
+	}
+
+	// 모든 WorldTileActor 찾기
+	TArray<AActor*> FoundActors;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), AWorldTileActor::StaticClass(), FoundActors);
+
+	// 각 WorldTileActor의 전투 호버 델리게이트 바인딩
+	for (AActor* Actor : FoundActors)
+	{
+		if (AWorldTileActor* TileActor = Cast<AWorldTileActor>(Actor))
+		{
+			TileActor->OnCombatTileHoverBegin.AddDynamic(this, &UMainHUD::OnCombatTileHoverBeginHandler);
+			TileActor->OnCombatTileHoverEnd.AddDynamic(this, &UMainHUD::OnCombatTileHoverEndHandler);
+		}
+	}
+}
+
+void UMainHUD::BindCombatExecutedDelegate()
+{
+	if (!GetWorld())
+	{
+		return;
+	}
+
+	USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(GetWorld()->GetGameInstance());
+	if (!SuperGameInst)
+	{
+		return;
+	}
+
+	UUnitManager* UnitManager = SuperGameInst->GetUnitManager();
+	if (!UnitManager)
+	{
+		return;
+	}
+
+	// 기존 바인딩 해제
+	UnitManager->OnCombatExecuted.RemoveDynamic(this, &UMainHUD::OnCombatExecutedHandler);
+
+	// 새로운 바인딩
+	UnitManager->OnCombatExecuted.AddDynamic(this, &UMainHUD::OnCombatExecutedHandler);
 }
 
 void UMainHUD::BindPlayerStateDelegates()
@@ -358,6 +424,135 @@ void UMainHUD::OnGeneralTileClickedHandler(FVector2D TileCoordinate)
 	}
 }
 
+void UMainHUD::OnCombatTileHoverBeginHandler(UWorldTile* Tile)
+{
+	if (!Tile || !UnitCombatUIWidget)
+	{
+		return;
+	}
+
+	// 플레이어 0의 턴인지 확인
+	if (UWorld* World = GetWorld())
+	{
+		if (ASuperGameModeBase* GameMode = Cast<ASuperGameModeBase>(World->GetAuthGameMode()))
+		{
+			if (UTurnComponent* TurnComponent = GameMode->GetTurnComponent())
+			{
+				if (TurnComponent->GetCurrentPlayerIndex() != 0)
+				{
+					return; // 플레이어 0의 턴이 아니면 무시
+				}
+			}
+		}
+	}
+
+	// UnitManager 가져오기
+	if (UWorld* World = GetWorld())
+	{
+		if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
+		{
+			if (UUnitManager* UnitManager = SuperGameInst->GetUnitManager())
+			{
+				// 첫 번째 전투 선택이 있는지 확인
+				if (!UnitManager->HasCombatFirstSelection())
+				{
+					return; // 첫 번째 전투 선택이 없으면 무시
+				}
+
+				FVector2D HoverHexPos = Tile->GetGridPosition();
+				
+				// 호버한 타일에 유닛이 있는지 확인
+				AUnitCharacterBase* Defender = UnitManager->GetUnitAtHex(HoverHexPos);
+				if (!Defender)
+				{
+					return; // 유닛이 없으면 무시
+				}
+
+				// 첫 번째 선택된 타일의 공격자 가져오기
+				UWorldTile* FirstSelectedTile = UnitManager->GetCombatFirstSelectedTile();
+				if (!FirstSelectedTile)
+				{
+					return;
+				}
+
+				FVector2D AttackerHexPos = FirstSelectedTile->GetGridPosition();
+				AUnitCharacterBase* Attacker = UnitManager->GetUnitAtHex(AttackerHexPos);
+				if (!Attacker)
+				{
+					return;
+				}
+
+				// 공격 가능한 유닛인지 확인 (FUnitBaseStat::CanAttack)
+				if (UUnitStatusComponent* AttackerStatus = Attacker->GetUnitStatusComponent())
+				{
+					FUnitBaseStat BaseStat = AttackerStatus->GetBaseStat();
+					if (!BaseStat.CanAttack)
+					{
+						return; // 공격 불가능한 유닛
+					}
+				}
+				else
+				{
+					return; // 상태 컴포넌트가 없으면 무시
+				}
+
+				// UnitCombatComponent를 통한 통합 검증 (단순화!)
+				if (UUnitCombatComponent* CombatComp = Attacker->GetUnitCombatComponent())
+				{
+					if (!CombatComp->CanExecuteCombat(Attacker, Defender, AttackerHexPos, HoverHexPos))
+					{
+						return; // 공격 불가능
+					}
+				}
+				else
+				{
+					return; // 전투 컴포넌트가 없으면 무시
+				}
+
+				// 같은 타일을 호버한 경우 무시 (중복 방지)
+				if (bIsCombatUIOpen && CurrentCombatHoverTile == HoverHexPos)
+				{
+					return;
+				}
+
+				// 다른 타일이거나 새로 열어야 하는 경우: 기존 UI 닫고 새로 열기
+				if (bIsCombatUIOpen)
+				{
+					// UI 숨김 로직은 나중에 추가
+				}
+
+				// 전투 UI 설정 및 표시
+				UnitCombatUIWidget->SetupForCombat(Attacker, Defender, AttackerHexPos, HoverHexPos);
+				UnitCombatUIWidget->SetVisibility(ESlateVisibility::Visible);
+				CurrentCombatHoverTile = HoverHexPos;
+				bIsCombatUIOpen = true;
+			}
+		}
+	}
+}
+
+void UMainHUD::OnCombatTileHoverEndHandler(UWorldTile* Tile)
+{
+	// 호버 종료 시 UI 닫기
+	CloseCombatUI();
+}
+
+void UMainHUD::OnCombatExecutedHandler()
+{
+	// 전투 실행 완료 시 UI 닫기
+	CloseCombatUI();
+}
+
+void UMainHUD::CloseCombatUI()
+{
+	if (UnitCombatUIWidget)
+	{
+		UnitCombatUIWidget->SetVisibility(ESlateVisibility::Hidden);
+	}
+	CurrentCombatHoverTile = FVector2D::ZeroVector;
+	bIsCombatUIOpen = false;
+}
+
 void UMainHUD::CloseFacilityUI()
 {
 	if (BuildFacilityUIWidget)
@@ -382,6 +577,7 @@ void UMainHUD::NativeDestruct()
 		GetWorld()->GetTimerManager().ClearTimer(BindCityTileTimerHandle);
 		GetWorld()->GetTimerManager().ClearTimer(BindBuilderTileTimerHandle);
 		GetWorld()->GetTimerManager().ClearTimer(BindGeneralTileTimerHandle);
+		GetWorld()->GetTimerManager().ClearTimer(BindCombatTileHoverTimerHandle);
 	}
 
 	// 델리게이트 바인딩 해제
@@ -410,6 +606,8 @@ void UMainHUD::NativeDestruct()
 				TileActor->OnPlayerCityTileClicked.RemoveDynamic(this, &UMainHUD::OnPlayerCityTileClicked);
 				TileActor->OnBuilderTileClicked.RemoveDynamic(this, &UMainHUD::OnBuilderTileClickedHandler);
 				TileActor->OnGeneralTileClicked.RemoveDynamic(this, &UMainHUD::OnGeneralTileClickedHandler);
+				TileActor->OnCombatTileHoverBegin.RemoveDynamic(this, &UMainHUD::OnCombatTileHoverBeginHandler);
+				TileActor->OnCombatTileHoverEnd.RemoveDynamic(this, &UMainHUD::OnCombatTileHoverEndHandler);
 			}
 		}
 
@@ -426,6 +624,15 @@ void UMainHUD::NativeDestruct()
 
 		// FacilityManager 델리게이트 바인딩 해제
 		UnbindFacilityDelegates();
+
+		// UnitManager의 전투 실행 완료 델리게이트 바인딩 해제
+		if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(GetWorld()->GetGameInstance()))
+		{
+			if (UUnitManager* UnitManager = SuperGameInst->GetUnitManager())
+			{
+				UnitManager->OnCombatExecuted.RemoveDynamic(this, &UMainHUD::OnCombatExecutedHandler);
+			}
+		}
 	}
 
 	// 전략 자원 슬롯 정리

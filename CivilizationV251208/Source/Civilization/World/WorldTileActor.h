@@ -16,6 +16,12 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnBuilderTileClicked, UWorldTile*,
 // 일반 타일 클릭 이벤트 (건설자/도시 타일이 아닌 경우)
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnGeneralTileClicked, FVector2D, TileCoordinate);
 
+// 전투 타일 호버 시작 이벤트
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCombatTileHoverBegin, UWorldTile*, Tile);
+
+// 전투 타일 호버 종료 이벤트
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCombatTileHoverEnd, UWorldTile*, Tile);
+
 UCLASS()
 class CIVILIZATION_API AWorldTileActor : public AActor
 {
@@ -113,5 +119,13 @@ public:
 	// 일반 타일 클릭 이벤트
 	UPROPERTY(BlueprintAssignable, Category = "Tile Events")
 	FOnGeneralTileClicked OnGeneralTileClicked;
+
+	// 전투 타일 호버 시작 이벤트
+	UPROPERTY(BlueprintAssignable, Category = "Combat Events")
+	FOnCombatTileHoverBegin OnCombatTileHoverBegin;
+
+	// 전투 타일 호버 종료 이벤트
+	UPROPERTY(BlueprintAssignable, Category = "Combat Events")
+	FOnCombatTileHoverEnd OnCombatTileHoverEnd;
 };
 

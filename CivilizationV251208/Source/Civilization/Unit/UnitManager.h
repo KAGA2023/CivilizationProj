@@ -6,6 +6,9 @@
 #include "Components/ActorComponent.h"
 #include "UnitManager.generated.h"
 
+// 전투 실행 완료 이벤트 델리게이트
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCombatExecuted);
+
 class UWorldComponent;
 class AUnitCharacterBase;
 class USuperGameInstance;
@@ -205,6 +208,10 @@ public:
     // 전투 실행 함수
     UFUNCTION(BlueprintCallable, Category = "Combat")
     void ExecuteCombatBetweenSelectedUnits(); // 선택된 유닛들 간 전투 실행
+
+    // 전투 실행 완료 이벤트
+    UPROPERTY(BlueprintAssignable, Category = "Combat Events")
+    FOnCombatExecuted OnCombatExecuted;
 
 private:
     // 월드 컴포넌트 참조

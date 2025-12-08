@@ -30,6 +30,9 @@ public:
 	class UProgressBar* PlayerUnitHpBar = nullptr;
 
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+	class UProgressBar* PlayerUnitHpMinusBar = nullptr;
+
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
 	class UTextBlock* PlayerUnitHpTxt = nullptr;
 
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
@@ -53,6 +56,9 @@ public:
 	class UProgressBar* EnemyUnitHpBar = nullptr;
 
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+	class UProgressBar* EnemyUnitHpMinusBar = nullptr;
+
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
 	class UTextBlock* EnemyUnitHpTxt = nullptr;
 
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
@@ -63,4 +69,8 @@ public:
 
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
 	class UTextBlock* EnemyUnitDmgTxt = nullptr;
+
+	// 전투 예측 정보 설정
+	UFUNCTION(BlueprintCallable, Category = "Combat")
+	void SetupForCombat(class AUnitCharacterBase* Attacker, class AUnitCharacterBase* Defender, FVector2D AttackerHex, FVector2D DefenderHex);
 };
