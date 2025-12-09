@@ -518,7 +518,7 @@ void UMainHUD::OnCombatTileHoverBeginHandler(UWorldTile* Tile)
 				// 다른 타일이거나 새로 열어야 하는 경우: 기존 UI 닫고 새로 열기
 				if (bIsCombatUIOpen)
 				{
-					// UI 숨김 로직은 나중에 추가
+					CloseCombatUI();
 				}
 
 				// 전투 UI 설정 및 표시
