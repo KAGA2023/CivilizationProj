@@ -1028,34 +1028,55 @@ void UUnitManager::ExecuteCombatBetweenSelectedUnits()
     // 전투 가능 여부 확인 (Hex 좌표 포함하여 사거리/층수 검증)
     if (!CombatComp->CanExecuteCombat(Attacker, Defender, FirstHexPos, SecondHexPos))
     {
-        UE_LOG(LogTemp, Warning, TEXT("전투 실행 불가능"));
         return;
     }
     
-    // 전투 실행 (거리 및 HexPosition 파라미터 전달)
+    // 전투 계산 즉시 실행 (데미지 적용 포함)
     FCombatResult CombatResult = CombatComp->ExecuteCombat(Attacker, Defender, HexDistance, FirstHexPos, SecondHexPos);
     
-    // 디버그 로그 출력
-    UE_LOG(LogTemp, Warning, TEXT("=== 전투 결과 ==="));
-    UE_LOG(LogTemp, Warning, TEXT("공격자 생존: %s"), CombatResult.bAttackerAlive ? TEXT("생존") : TEXT("사망"));
-    UE_LOG(LogTemp, Warning, TEXT("방어자 생존: %s"), CombatResult.bDefenderAlive ? TEXT("생존") : TEXT("사망"));
-    UE_LOG(LogTemp, Warning, TEXT("공격자가 준 데미지: %d"), CombatResult.AttackerDamageDealt);
-    UE_LOG(LogTemp, Warning, TEXT("방어자가 준 데미지: %d"), CombatResult.DefenderDamageDealt);
-    UE_LOG(LogTemp, Warning, TEXT("공격자가 받은 데미지: %d"), CombatResult.AttackerDamageTaken);
-    UE_LOG(LogTemp, Warning, TEXT("방어자가 받은 데미지: %d"), CombatResult.DefenderDamageTaken);
+    // 전투 시작 시점에 UI 닫기 위해 델리게이트 브로드캐스트
+    OnCombatExecuted.Broadcast();
+    
+    // 공격자의 AIController 가져오기
+    AUnitAIController* AIController = Cast<AUnitAIController>(Attacker->GetController());
+    if (AIController)
+    {
+        // WorldComponent 설정 (없으면)
+        if (!AIController->GetWorldComponent())
+        {
+            AIController->SetWorldComponent(WorldComponent);
+        }
+        
+        // UnitManager 설정
+        AIController->SetUnitManager(this);
+        
+        // 전투 시각화 시작
+        AIController->StartCombatVisualization(Attacker, Defender, CombatResult);
+    }
+    else
+    {
+        // AIController가 없으면 즉시 결과 처리 (폴백)
+        OnCombatVisualizationComplete(Attacker, Defender, CombatResult, FirstHexPos, SecondHexPos);
+    }
+}
+
+// 전투 시각화 완료 콜백
+void UUnitManager::OnCombatVisualizationComplete(AUnitCharacterBase* Attacker, AUnitCharacterBase* Defender, const FCombatResult& CombatResult, FVector2D AttackerHex, FVector2D DefenderHex)
+{
+    if (!Attacker || !Defender)
+    {
+        return;
+    }
     
     // 유닛이 죽었으면 제거
     if (!CombatResult.bAttackerAlive && Attacker)
     {
-        DestroyUnit(Attacker, FirstHexPos);
+        DestroyUnit(Attacker, AttackerHex);
     }
     
     if (!CombatResult.bDefenderAlive && Defender)
     {
-        DestroyUnit(Defender, SecondHexPos);
+        DestroyUnit(Defender, DefenderHex);
     }
-    
-    // 전투 실행 완료 델리게이트 브로드캐스트
-    OnCombatExecuted.Broadcast();
 }
 

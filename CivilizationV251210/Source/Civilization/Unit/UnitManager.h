@@ -13,6 +13,9 @@ class UWorldComponent;
 class AUnitCharacterBase;
 class USuperGameInstance;
 
+// 전투 결과 구조체 전방 선언
+struct FCombatResult;
+
 // A* 알고리즘용 노드 구조체
 USTRUCT(BlueprintType)
 struct CIVILIZATION_API FAStarNode
@@ -208,6 +211,10 @@ public:
     // 전투 실행 함수
     UFUNCTION(BlueprintCallable, Category = "Combat")
     void ExecuteCombatBetweenSelectedUnits(); // 선택된 유닛들 간 전투 실행
+
+    // 전투 시각화 완료 콜백 (AIController에서 호출)
+    UFUNCTION(BlueprintCallable, Category = "Combat")
+    void OnCombatVisualizationComplete(AUnitCharacterBase* Attacker, AUnitCharacterBase* Defender, const struct FCombatResult& CombatResult, FVector2D AttackerHex, FVector2D DefenderHex);
 
     // 전투 실행 완료 이벤트
     UPROPERTY(BlueprintAssignable, Category = "Combat Events")

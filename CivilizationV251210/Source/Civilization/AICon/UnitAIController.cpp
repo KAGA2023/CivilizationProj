@@ -8,6 +8,7 @@
 #include "../World/WorldComponent.h"
 #include "../Unit/UnitManager.h"
 #include "../SuperGameInstance.h"
+#include "../Combat/UnitCombatStruct.h"
 #include "Engine/Engine.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -83,6 +84,8 @@ void AUnitAIController::InitBlackboardAndBT()
         Blackboard->SetValueAsBool(KeyIsMoving, false);
         Blackboard->SetValueAsBool(KeyMovementComplete, false);
         Blackboard->SetValueAsVector(KeyTargetHexPosition, FVector::ZeroVector);
+        Blackboard->SetValueAsBool(KeyIsInCombat, false);
+        Blackboard->SetValueAsBool(KeyCombatComplete, false);
     }
 }
 
@@ -196,6 +199,71 @@ FVector2D AUnitAIController::WorldToHex(FVector WorldPosition) const
     }
 
     return WorldComponent->WorldToHex(WorldPosition);
+}
+
+void AUnitAIController::StartCombatVisualization(AUnitCharacterBase* Attacker, AUnitCharacterBase* Defender, const FCombatResult& CombatResult)
+{
+    // 유효성 검사
+    if (!Attacker || !Defender)
+    {
+        return;
+    }
+
+    // 이미 전투 중이면 무시
+    if (bIsInCombat)
+    {
+        return;
+    }
+
+    // 전투 데이터 저장
+    CombatAttacker = Attacker;
+    CombatDefender = Defender;
+    CurrentCombatResult = CombatResult;
+    bIsInCombat = true;
+
+    // 공격자 원래 위치 저장 (복귀용)
+    if (WorldComponent && Attacker)
+    {
+        FVector AttackerWorldPos = Attacker->GetActorLocation();
+        AttackerOriginalHexPosition = WorldComponent->WorldToHex(AttackerWorldPos);
+    }
+
+    // Blackboard 업데이트
+    if (Blackboard)
+    {
+        Blackboard->SetValueAsBool(KeyIsInCombat, true);
+        Blackboard->SetValueAsBool(KeyCombatComplete, false);
+    }
+}
+
+void AUnitAIController::CompleteCombatVisualization()
+{
+    // UnitManager에 전투 완료 알림
+    if (UnitManager && CombatAttacker && CombatDefender && WorldComponent)
+    {
+        // Hex 좌표 계산
+        FVector2D AttackerHex = WorldComponent->WorldToHex(CombatAttacker->GetActorLocation());
+        FVector2D DefenderHex = WorldComponent->WorldToHex(CombatDefender->GetActorLocation());
+        
+        // UnitManager에 완료 알림
+        UnitManager->OnCombatVisualizationComplete(CombatAttacker, CombatDefender, CurrentCombatResult, AttackerHex, DefenderHex);
+    }
+
+    // 전투 상태 초기화
+    bIsInCombat = false;
+
+    // Blackboard 업데이트
+    if (Blackboard)
+    {
+        Blackboard->SetValueAsBool(KeyIsInCombat, false);
+        Blackboard->SetValueAsBool(KeyCombatComplete, true);
+    }
+
+    // 전투 데이터 초기화
+    CombatAttacker = nullptr;
+    CombatDefender = nullptr;
+    CurrentCombatResult.Reset();
+    AttackerOriginalHexPosition = FVector2D::ZeroVector;
 }
 
 

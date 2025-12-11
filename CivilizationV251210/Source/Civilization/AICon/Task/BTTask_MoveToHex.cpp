@@ -139,7 +139,7 @@ void UBTTask_MoveToHex::TickTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeM
     float Distance = Direction.Size();
 
     // 점프 체크 (목표에 가까워졌을 때, 그리고 이 목표 타일에 대해 아직 점프하지 않았을 때)
-    if (Distance <= 300.0f && LastJumpedTargetHex != TargetHex)
+    if (Distance <= 300.0f && Distance >140.0f && LastJumpedTargetHex != TargetHex)
     {
         // 경로에서 현재 타일 위치 가져오기 (더 정확함)
         TArray<FVector2D> CurrentPath = UnitAIController->GetCurrentMovementPath();
