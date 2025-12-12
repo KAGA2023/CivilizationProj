@@ -81,6 +81,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Tile")
 	void SetSelected(bool bSelected);
 
+	// 구매 가능 타일 하이라이트 설정
+	UFUNCTION(BlueprintCallable, Category = "Tile")
+	void SetPurchaseableHighlight(bool bHighlight);
+
 	// 자원 메시 가져오기 (데이터테이블에서)
 	UFUNCTION(BlueprintCallable, Category = "Tile")
 	UStaticMesh* GetStrategicResourceMesh(EStrategicResource Resource) const;
@@ -106,6 +110,10 @@ protected:
 	// 선택 상태
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tile")
 	bool bIsSelected;
+
+	// 구매 가능 타일 하이라이트 상태
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tile")
+	bool bIsPurchaseableHighlighted = false;
 
 public:
 	// 바다 메시 (데이터테이블이 없는 경우를 위한 기본값)

@@ -9,10 +9,12 @@
 #include "../../SuperGameInstance.h"
 #include "../../SuperPlayerState.h"
 #include "../../World/WorldComponent.h"
+#include "../../World/WorldTileActor.h"
 #include "../../City/CityComponent.h"
 #include "../../City/CityStruct.h"
 #include "../../Status/UnitStatusStruct.h"
 #include "../../Facility/FacilityManager.h"
+#include "Kismet/GameplayStatics.h"
 
 void UCityUI::NativeConstruct()
 {
@@ -66,9 +68,15 @@ void UCityUI::NativeConstruct()
 		PurchaseBtn->OnClicked.AddDynamic(this, &UCityUI::OnPurchaseBtnClicked);
 	}
 
+	if (PurchaseTileBtn)
+	{
+		PurchaseTileBtn->OnClicked.AddDynamic(this, &UCityUI::OnPurchaseTileBtnClicked);
+	}
+
 	// 도시 컴포넌트 참조 가져오기 및 델리게이트 바인딩
 	BindToProductionDelegates();
 	BindToFacilityDelegates();
+	BindToPurchaseDelegates();
 }
 
 void UCityUI::UpdateCityData()
@@ -174,6 +182,13 @@ void UCityUI::NativeDestruct()
 	// 델리게이트 바인딩 해제
 	UnbindFromProductionDelegates();
 	UnbindFromFacilityDelegates();
+	UnbindFromPurchaseDelegates();
+
+	// 구매 모드 해제
+	if (bIsTilePurchaseMode)
+	{
+		ExitPurchaseMode();
+	}
 
 	Super::NativeDestruct();
 }
@@ -435,6 +450,286 @@ void UCityUI::UnbindFromFacilityDelegates()
 	{
 		// 델리게이트 바인딩 해제
 		FacilityManager->OnFacilityChanged.RemoveDynamic(this, &UCityUI::OnFacilityChanged);
+	}
+}
+
+// ========== 타일 구매 시스템 ==========
+void UCityUI::OnPurchaseTileBtnClicked()
+{
+	// 구매 모드 토글
+	bIsTilePurchaseMode = !bIsTilePurchaseMode;
+
+	if (bIsTilePurchaseMode)
+	{
+		// 구매 모드 활성화: 델리게이트 다시 바인딩 (타일 액터가 나중에 스폰될 수 있으므로)
+		BindToPurchaseDelegates();
+		
+		// 구매 가능한 타일 찾기 및 하이라이트
+		FindPurchaseableTiles();
+		HighlightPurchaseableTiles();
+	}
+	else
+	{
+		// 구매 모드 비활성화: 하이라이트 제거
+		ExitPurchaseMode();
+	}
+}
+
+void UCityUI::FindPurchaseableTiles()
+{
+	// PurchaseableTileCoordinates 초기화
+	PurchaseableTileCoordinates.Empty();
+
+	if (!GetWorld())
+	{
+		return;
+	}
+
+	USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(GetWorld()->GetGameInstance());
+	if (!SuperGameInst)
+	{
+		return;
+	}
+
+	ASuperPlayerState* PlayerState = SuperGameInst->GetPlayerState(0);
+	UWorldComponent* WorldComponent = SuperGameInst->GetGeneratedWorldComponent();
+
+	if (!PlayerState || !WorldComponent)
+	{
+		return;
+	}
+
+	// 소유한 타일 좌표들 가져오기
+	TArray<FVector2D> OwnedTiles = PlayerState->GetOwnedTileCoordinates();
+
+	// 중복 방지를 위한 Set 사용
+	TSet<FVector2D> PurchaseableTileSet;
+
+	// 각 소유 타일의 인접 타일 확인
+	for (const FVector2D& OwnedTileCoord : OwnedTiles)
+	{
+		// 인접 타일 좌표들 가져오기
+		TArray<FVector2D> NeighborCoords = WorldComponent->GetHexNeighbors(OwnedTileCoord);
+
+		// 각 인접 타일이 구매 가능한지 확인
+		for (const FVector2D& NeighborCoord : NeighborCoords)
+		{
+			// 이미 확인한 타일은 건너뛰기
+			if (PurchaseableTileSet.Contains(NeighborCoord))
+			{
+				continue;
+			}
+
+			// 구매 가능한지 확인
+			if (PlayerState->CanPurchaseTile(NeighborCoord, WorldComponent))
+			{
+				PurchaseableTileSet.Add(NeighborCoord);
+			}
+		}
+	}
+
+	// Set을 Array로 변환
+	PurchaseableTileCoordinates = PurchaseableTileSet.Array();
+}
+
+void UCityUI::HighlightPurchaseableTiles()
+{
+	if (!GetWorld())
+	{
+		return;
+	}
+
+	// 먼저 모든 하이라이트 제거
+	ClearPurchaseableTileHighlights();
+
+	// 모든 WorldTileActor 찾기
+	TArray<AActor*> FoundActors;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), AWorldTileActor::StaticClass(), FoundActors);
+
+	// 각 타일 액터 확인
+	for (AActor* Actor : FoundActors)
+	{
+		if (AWorldTileActor* TileActor = Cast<AWorldTileActor>(Actor))
+		{
+			if (UWorldTile* Tile = TileActor->TileData)
+			{
+				FVector2D TileCoord = Tile->GetGridPosition();
+
+				// 구매 가능한 타일이면 하이라이트 활성화
+				if (PurchaseableTileCoordinates.Contains(TileCoord))
+				{
+					TileActor->SetPurchaseableHighlight(true);
+				}
+			}
+		}
+	}
+}
+
+void UCityUI::ClearPurchaseableTileHighlights()
+{
+	if (!GetWorld())
+	{
+		return;
+	}
+
+	// 모든 WorldTileActor 찾기
+	TArray<AActor*> FoundActors;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), AWorldTileActor::StaticClass(), FoundActors);
+
+	// 모든 타일 액터의 하이라이트 제거
+	for (AActor* Actor : FoundActors)
+	{
+		if (AWorldTileActor* TileActor = Cast<AWorldTileActor>(Actor))
+		{
+			TileActor->SetPurchaseableHighlight(false);
+		}
+	}
+}
+
+void UCityUI::OnPurchaseTileClickedHandler(FVector2D TileCoordinate)
+{
+	// 구매 모드가 아니면 무시
+	if (!bIsTilePurchaseMode)
+	{
+		return;
+	}
+
+	// 클릭한 타일이 구매 가능한지 확인
+	if (!PurchaseableTileCoordinates.Contains(TileCoordinate))
+	{
+		return;
+	}
+
+	if (!GetWorld())
+	{
+		return;
+	}
+
+	USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(GetWorld()->GetGameInstance());
+	if (!SuperGameInst)
+	{
+		return;
+	}
+
+	ASuperPlayerState* PlayerState = SuperGameInst->GetPlayerState(0);
+	UWorldComponent* WorldComponent = SuperGameInst->GetGeneratedWorldComponent();
+
+	if (!PlayerState || !WorldComponent)
+	{
+		return;
+	}
+
+	// 타일 구매 실행
+	if (PlayerState->PurchaseTile(TileCoordinate, WorldComponent))
+	{
+		// 구매 성공
+		// 구매 가능한 타일 목록 재계산
+		FindPurchaseableTiles();
+		
+		// 하이라이트 업데이트
+		HighlightPurchaseableTiles();
+		
+		// 도시 데이터 UI 업데이트 (골드 등)
+		UpdateCityData();
+	}
+	else
+	{
+		// 구매 실패 (골드 부족 등)
+	}
+}
+
+void UCityUI::OnGoldChanged(int32 NewGold)
+{
+	// 구매 모드일 때만 재계산
+	if (bIsTilePurchaseMode)
+	{
+		// 구매 가능한 타일 목록은 동일하지만, 골드 부족으로 인해 일부 타일이 구매 불가능할 수 있음
+		// 간단하게 하이라이트만 업데이트 (실제 구매 가능 여부는 클릭 시 재확인)
+		HighlightPurchaseableTiles();
+		
+		// 도시 데이터 업데이트 (골드 표시)
+		UpdateCityData();
+	}
+}
+
+void UCityUI::ExitPurchaseMode()
+{
+	bIsTilePurchaseMode = false;
+	ClearPurchaseableTileHighlights();
+	PurchaseableTileCoordinates.Empty();
+	
+	// 구매 관련 델리게이트 언바인드
+	UnbindFromPurchaseDelegates();
+}
+
+void UCityUI::BindToPurchaseDelegates()
+{
+	if (!GetWorld())
+	{
+		return;
+	}
+
+	USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(GetWorld()->GetGameInstance());
+	if (!SuperGameInst)
+	{
+		return;
+	}
+
+	ASuperPlayerState* PlayerState = SuperGameInst->GetPlayerState(0);
+	if (!PlayerState)
+	{
+		return;
+	}
+
+	// 기존 바인딩 해제 후 새로 바인딩
+	UnbindFromPurchaseDelegates();
+
+	// 골드 변경 델리게이트 바인딩
+	PlayerState->OnGoldChanged.AddDynamic(this, &UCityUI::OnGoldChanged);
+
+	// 모든 WorldTileActor의 OnGeneralTileClicked 델리게이트 바인딩
+	TArray<AActor*> FoundActors;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), AWorldTileActor::StaticClass(), FoundActors);
+
+	for (AActor* Actor : FoundActors)
+	{
+		if (AWorldTileActor* TileActor = Cast<AWorldTileActor>(Actor))
+		{
+			TileActor->OnGeneralTileClicked.AddDynamic(this, &UCityUI::OnPurchaseTileClickedHandler);
+		}
+	}
+}
+
+void UCityUI::UnbindFromPurchaseDelegates()
+{
+	if (!GetWorld())
+	{
+		return;
+	}
+
+	USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(GetWorld()->GetGameInstance());
+	if (!SuperGameInst)
+	{
+		return;
+	}
+
+	ASuperPlayerState* PlayerState = SuperGameInst->GetPlayerState(0);
+	if (PlayerState)
+	{
+		// 골드 변경 델리게이트 바인딩 해제
+		PlayerState->OnGoldChanged.RemoveDynamic(this, &UCityUI::OnGoldChanged);
+	}
+
+	// 모든 WorldTileActor의 OnGeneralTileClicked 델리게이트 바인딩 해제
+	TArray<AActor*> FoundActors;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), AWorldTileActor::StaticClass(), FoundActors);
+
+	for (AActor* Actor : FoundActors)
+	{
+		if (AWorldTileActor* TileActor = Cast<AWorldTileActor>(Actor))
+		{
+			TileActor->OnGeneralTileClicked.RemoveDynamic(this, &UCityUI::OnPurchaseTileClickedHandler);
+		}
 	}
 }
 

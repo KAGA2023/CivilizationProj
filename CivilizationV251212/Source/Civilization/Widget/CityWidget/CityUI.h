@@ -45,6 +45,9 @@ protected:
 	class UButton* PurchaseBtn = nullptr;
 
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+	class UButton* PurchaseTileBtn = nullptr;
+
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
 	class UBorder* ProductionWid = nullptr;
 
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
@@ -81,6 +84,18 @@ protected:
 	UFUNCTION()
 	void OnFacilityChanged(FVector2D TileCoordinate);
 
+	// 타일 구매 버튼 클릭 핸들러
+	UFUNCTION()
+	void OnPurchaseTileBtnClicked();
+
+	// 타일 구매 클릭 핸들러
+	UFUNCTION()
+	void OnPurchaseTileClickedHandler(FVector2D TileCoordinate);
+
+	// 골드 변경 델리게이트 핸들러
+	UFUNCTION()
+	void OnGoldChanged(int32 NewGold);
+
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 
@@ -94,5 +109,21 @@ private:
 	void UnbindFromProductionDelegates();
 	void BindToFacilityDelegates();
 	void UnbindFromFacilityDelegates();
+	void BindToPurchaseDelegates();
+	void UnbindFromPurchaseDelegates();
+
+	// 타일 구매 관련 함수
+	void FindPurchaseableTiles();
+	void HighlightPurchaseableTiles();
+	void ClearPurchaseableTileHighlights();
+	void ExitPurchaseMode();
+
+	// 구매 모드 상태
+	UPROPERTY()
+	bool bIsTilePurchaseMode = false;
+
+	// 구매 가능한 타일 좌표 배열
+	UPROPERTY()
+	TArray<FVector2D> PurchaseableTileCoordinates;
 };
 

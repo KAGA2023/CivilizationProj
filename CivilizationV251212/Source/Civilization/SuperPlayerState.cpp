@@ -247,6 +247,117 @@ bool ASuperPlayerState::IsTileOwned(FVector2D TileCoordinate) const
     return OwnedTileCoordinates.Contains(TileCoordinate);
 }
 
+// ========== 타일 구매 시스템 ==========
+bool ASuperPlayerState::CanPurchaseTile(FVector2D TileCoordinate, UWorldComponent* WorldComponent)
+{
+    // WorldComponent가 유효한지 확인
+    if (!WorldComponent)
+    {
+        return false;
+    }
+    
+    // 타일이 존재하는지 확인
+    UWorldTile* Tile = WorldComponent->GetTileAtHex(TileCoordinate);
+    if (!Tile)
+    {
+        return false;
+    }
+    
+    // 이미 소유한 타일이면 구매 불가
+    if (IsTileOwned(TileCoordinate))
+    {
+        return false;
+    }
+    
+    // 다른 플레이어가 소유한 타일이면 구매 불가
+    int32 TileOwnerID = Tile->GetOwnerPlayerID();
+    if (TileOwnerID != -1 && TileOwnerID != PlayerIndex)
+    {
+        return false;
+    }
+    
+    // 내가 소유한 타일과 거리 1인 타일만 구매 가능
+    // 인접 타일 좌표들을 가져옴
+    TArray<FVector2D> NeighborCoords = WorldComponent->GetHexNeighbors(TileCoordinate);
+    
+    // 인접 타일 중 하나라도 내가 소유한 타일이 있는지 확인
+    bool bIsAdjacentToOwnedTile = false;
+    for (const FVector2D& NeighborCoord : NeighborCoords)
+    {
+        if (IsTileOwned(NeighborCoord))
+        {
+            bIsAdjacentToOwnedTile = true;
+            break;
+        }
+    }
+    
+    // 인접한 소유 타일이 없으면 구매 불가
+    if (!bIsAdjacentToOwnedTile)
+    {
+        return false;
+    }
+    
+    return true;
+}
+
+int32 ASuperPlayerState::CalculateTilePurchaseCost(FVector2D TileCoordinate, UWorldComponent* WorldComponent)
+{
+    // WorldComponent가 유효한지 확인
+    if (!WorldComponent)
+    {
+        return 0;
+    }
+    
+    // 도시가 없으면 비용 계산 불가 (또는 기본값 반환)
+    if (!HasCity())
+    {
+        return 0; // 또는 기본 비용 반환 가능
+    }
+    
+    // 도시 좌표 가져오기
+    FVector2D CityCoord = GetCityCoordinate();
+    
+    // 도시와 타일 간 거리 계산
+    int32 Distance = WorldComponent->GetHexDistance(CityCoord, TileCoordinate);
+    
+    // 비용 계산: 기본 25골드 + 거리당 5골드
+    int32 BaseCost = 25;
+    int32 CostPerDistance = 5;
+    int32 TotalCost = BaseCost + (Distance * CostPerDistance);
+    
+    return TotalCost;
+}
+
+bool ASuperPlayerState::PurchaseTile(FVector2D TileCoordinate, UWorldComponent* WorldComponent)
+{
+    // 구매 가능 여부 확인
+    if (!CanPurchaseTile(TileCoordinate, WorldComponent))
+    {
+        return false;
+    }
+    
+    // 구매 비용 계산
+    int32 Cost = CalculateTilePurchaseCost(TileCoordinate, WorldComponent);
+    if (Cost <= 0)
+    {
+        return false; // 비용이 0 이하면 구매 불가
+    }
+    
+    // 골드가 충분한지 확인 및 차감
+    if (!SpendGold(Cost))
+    {
+        return false; // 골드가 부족하면 구매 실패
+    }
+    
+    // 타일 소유 목록에 추가 (AddOwnedTile이 내부에서 소유 상태 업데이트까지 처리)
+    AddOwnedTile(TileCoordinate, WorldComponent);
+    
+    // 타일 구매 성공 후 MainHUD 업데이트를 위해 OnGoldChanged 다시 브로드캐스트 (생산량 변경 반영)
+    OnGoldChanged.Broadcast(Gold);
+    
+    // 구매 성공
+    return true;
+}
 
 // ========== 매턴 처리 함수들 ==========
 void ASuperPlayerState::ProcessTurnResources()

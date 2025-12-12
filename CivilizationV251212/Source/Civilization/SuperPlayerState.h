@@ -158,6 +158,16 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Tile Management")
     bool IsTileOwned(FVector2D TileCoordinate) const; // 특정 좌표의 타일 소유 여부 확인
 
+    // ========== 타일 구매 시스템 ==========
+    UFUNCTION(BlueprintCallable, Category = "Tile Purchase")
+    bool CanPurchaseTile(FVector2D TileCoordinate, UWorldComponent* WorldComponent); // 타일 구매 가능 여부 확인
+
+    UFUNCTION(BlueprintCallable, Category = "Tile Purchase")
+    int32 CalculateTilePurchaseCost(FVector2D TileCoordinate, UWorldComponent* WorldComponent); // 타일 구매 비용 계산
+
+    UFUNCTION(BlueprintCallable, Category = "Tile Purchase")
+    bool PurchaseTile(FVector2D TileCoordinate, UWorldComponent* WorldComponent); // 타일 구매 실행
+
     // ========== 매턴 처리 함수들 ==========
     UFUNCTION(BlueprintCallable, Category = "Turn Management")
     void ProcessTurnResources(); // 매턴 자원 생산 처리

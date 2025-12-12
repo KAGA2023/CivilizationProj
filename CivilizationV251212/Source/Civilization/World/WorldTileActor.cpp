@@ -54,6 +54,7 @@ AWorldTileActor::AWorldTileActor()
 	// 기본값 초기화
 	TileData = nullptr;
 	bIsSelected = false;
+	bIsPurchaseableHighlighted = false;
 
 	// 바다 메시 로드
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> OceanMeshAsset(TEXT("/Game/CartoonCuteNaturePack/Static_Meshes/Spots/SM_BAVEL_SPOT_WATER.SM_BAVEL_SPOT_WATER"));
@@ -220,6 +221,38 @@ void AWorldTileActor::UpdateVisual()
 	{
 		// 자원이 없으면 자원 메시 숨김
 		ResourceMesh->SetVisibility(false);
+	}
+
+	// 구매 가능 타일 하이라이트 처리
+	if (bIsPurchaseableHighlighted)
+	{
+		// 하이라이트 효과 적용 (예: 메시 색상 변경)
+		// 현재는 Material 파라미터를 사용하지 않으므로, 향후 Material에 파라미터를 추가하면 여기서 설정
+		// TileMesh->SetScalarParameterValueOnMaterials(TEXT("IsHighlighted"), 1.0f);
+		
+		// 임시로 메시에 Emissive 색상 변경을 위한 Material Instance Dynamic 생성
+		if (TileMesh && TileMesh->GetMaterial(0))
+		{
+			UMaterialInstanceDynamic* DynamicMaterial = TileMesh->CreateDynamicMaterialInstance(0);
+			if (DynamicMaterial)
+			{
+				// 하이라이트 색상 설정 (금색 계열)
+				DynamicMaterial->SetVectorParameterValue(TEXT("EmissiveColor"), FLinearColor(1.0f, 0.8f, 0.0f, 1.0f));
+			}
+		}
+	}
+	else
+	{
+		// 하이라이트 효과 제거
+		if (TileMesh && TileMesh->GetMaterial(0))
+		{
+			UMaterialInstanceDynamic* DynamicMaterial = TileMesh->CreateDynamicMaterialInstance(0);
+			if (DynamicMaterial)
+			{
+				// 기본 색상으로 복원
+				DynamicMaterial->SetVectorParameterValue(TEXT("EmissiveColor"), FLinearColor(0.0f, 0.0f, 0.0f, 1.0f));
+			}
+		}
 	}
 
 }
@@ -551,6 +584,14 @@ void AWorldTileActor::SetSelected(bool bSelected)
 	{
 		TileData->SetSelected(bSelected);
 	}
+	
+	// 외형 업데이트
+	UpdateVisual();
+}
+
+void AWorldTileActor::SetPurchaseableHighlight(bool bHighlight)
+{
+	bIsPurchaseableHighlighted = bHighlight;
 	
 	// 외형 업데이트
 	UpdateVisual();
