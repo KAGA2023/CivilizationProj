@@ -9,6 +9,7 @@
 #include "Unit/UnitManager.h"
 #include "Facility/FacilityManager.h"
 #include "Facility/FacilityStruct.h"
+#include "Border/BorderManager.h"
 #include "Engine/World.h"
 #include "Engine/DataTable.h"
 #include "UObject/SoftObjectPath.h"
@@ -24,7 +25,7 @@ ASuperPlayerState::ASuperPlayerState()
     Faith = 0;
 
     // 게임 진행 초기화
-    Population = 1;
+    Population = 0;
     LimitPopulation = 4;
 
     // 플레이어 인덱스 초기화
@@ -199,6 +200,20 @@ void ASuperPlayerState::RemoveOwnedTile(FVector2D TileCoordinate, UWorldComponen
                 Tile->SetOwnerPlayerID(-1);
             }
         }
+        
+        // 타일 제거 후 국경선 업데이트
+        if (UWorld* World = GetWorld())
+        {
+            if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
+            {
+                if (UBorderManager* BorderManager = SuperGameInst->GetBorderManager())
+                {
+                    // 현재 플레이어의 국경선 업데이트
+                    TArray<FVector2D> OwnedTiles = GetOwnedTileCoordinates();
+                    BorderManager->UpdatePlayerBorder(PlayerIndex, OwnedTiles);
+                }
+            }
+        }
     }
 }
 
@@ -351,6 +366,20 @@ bool ASuperPlayerState::PurchaseTile(FVector2D TileCoordinate, UWorldComponent* 
     
     // 타일 소유 목록에 추가 (AddOwnedTile이 내부에서 소유 상태 업데이트까지 처리)
     AddOwnedTile(TileCoordinate, WorldComponent);
+    
+    // 타일 구매 성공 후 국경선 업데이트
+    if (UWorld* World = GetWorld())
+    {
+        if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
+        {
+            if (UBorderManager* BorderManager = SuperGameInst->GetBorderManager())
+            {
+                // 현재 플레이어의 국경선 업데이트
+                TArray<FVector2D> OwnedTiles = GetOwnedTileCoordinates();
+                BorderManager->UpdatePlayerBorder(PlayerIndex, OwnedTiles);
+            }
+        }
+    }
     
     // 타일 구매 성공 후 MainHUD 업데이트를 위해 OnGoldChanged 다시 브로드캐스트 (생산량 변경 반영)
     OnGoldChanged.Broadcast(Gold);

@@ -50,6 +50,10 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Tile")
 	UStaticMeshComponent* ResourceMesh;
 
+	// 타일 위젯 컴포넌트 (구매 가능 타일 하이라이트용)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Tile")
+	class UWidgetComponent* TileWidget;
+
 	// 참조하는 타일 데이터
 	UPROPERTY(BlueprintReadOnly, Category = "Tile")
 	UWorldTile* TileData;

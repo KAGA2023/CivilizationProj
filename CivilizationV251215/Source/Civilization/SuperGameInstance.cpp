@@ -6,6 +6,7 @@
 #include "World/WorldComponent.h"
 #include "Unit/UnitManager.h"
 #include "Facility/FacilityManager.h"
+#include "Border/BorderManager.h"
 #include "SuperPlayerState.h"
 
 USuperGameInstance::USuperGameInstance()
@@ -94,6 +95,24 @@ void USuperGameInstance::ClearFacilityManager()
 		// 가비지 컬렉션 대상으로 표시
 		FacilityManager->MarkAsGarbage();
 		FacilityManager = nullptr;
+	}
+}
+
+void USuperGameInstance::SetBorderManager(UBorderManager* InBorderManager)
+{
+	BorderManager = InBorderManager;
+}
+
+void USuperGameInstance::ClearBorderManager()
+{
+	if (BorderManager)
+	{
+		// 모든 국경선 제거
+		BorderManager->ClearAllBorders();
+		
+		// 가비지 컬렉션 대상으로 표시
+		BorderManager->MarkAsGarbage();
+		BorderManager = nullptr;
 	}
 }
 

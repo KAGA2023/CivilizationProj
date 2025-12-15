@@ -4,6 +4,7 @@
 #include "../SuperGameInstance.h"
 #include "../Unit/UnitManager.h"
 #include "../Facility/FacilityManager.h"
+#include "../Border/BorderManager.h"
 #include "../City/CityActor.h"
 #include "../SuperPlayerState.h"
 #include "../City/CityComponent.h"
@@ -54,6 +55,14 @@ void AWorldSpawner::BeginPlay()
 						
 						// 시설 변경 델리게이트 구독 (자원 메시 제어용)
 						FacilityManager->OnFacilityChanged.AddDynamic(this, &AWorldSpawner::OnFacilityChanged);
+					}
+					
+					// BorderManager 생성 및 설정
+					UBorderManager* BorderManager = NewObject<UBorderManager>(this);
+					if (BorderManager)
+					{
+						BorderManager->Initialize(WorldComponent, this);
+						SuperGameInst->SetBorderManager(BorderManager);
 					}
 				}
 				
@@ -334,6 +343,12 @@ void AWorldSpawner::AssignCitiesToPlayers()
 		{
 			PlayerState->AddOwnedTile(TileCoord, WorldComponent);
 		}
+	}
+	
+	// 도시 배정 완료 후 초기 국경선 업데이트
+	if (UBorderManager* BorderManager = GameInstance->GetBorderManager())
+	{
+		BorderManager->UpdateAllBorders();
 	}
 	
 	// 도시 배정 완료 후 카메라를 플레이어 0의 도시로 이동

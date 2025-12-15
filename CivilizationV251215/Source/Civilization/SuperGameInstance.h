@@ -87,6 +87,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Facility Management") // 시설 매니저 정리 (메모리 해제)
 	void ClearFacilityManager();
 
+	// 국경선 매니저 관리
+	UPROPERTY(BlueprintReadWrite, Category = "Border Management") // 국경선 매니저
+	class UBorderManager* BorderManager = nullptr;
+
+	UFUNCTION(BlueprintCallable, Category = "Border Management") // 국경선 매니저 설정
+	void SetBorderManager(class UBorderManager* InBorderManager);
+
+	UFUNCTION(BlueprintCallable, Category = "Border Management") // 국경선 매니저 가져오기
+	class UBorderManager* GetBorderManager() const { return BorderManager; }
+
+	UFUNCTION(BlueprintCallable, Category = "Border Management") // 국경선 매니저 정리 (메모리 해제)
+	void ClearBorderManager();
+
 	// 플레이어 스테이트 관리
 	UPROPERTY(BlueprintReadWrite, Category = "Player Management") // 모든 플레이어 스테이트
 	TArray<class ASuperPlayerState*> PlayerStates;

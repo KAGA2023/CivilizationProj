@@ -3,7 +3,7 @@
 #include "WorldTileActor.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
-#include "Materials/MaterialInstanceDynamic.h"
+#include "Components/WidgetComponent.h"
 #include "Engine/Engine.h"
 #include "UObject/ConstructorHelpers.h"
 #include "WorldComponent.h"
@@ -13,6 +13,7 @@
 #include "../Unit/UnitCharacterBase.h"
 #include "../SuperPlayerState.h"
 #include "../Turn/TurnComponent.h"
+#include "../Widget/TileWidget/TileUI.h"
 
 AWorldTileActor::AWorldTileActor()
 {
@@ -50,6 +51,25 @@ AWorldTileActor::AWorldTileActor()
 	ResourceMesh->SetupAttachment(RootSceneComponent);
 	ResourceMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision); // 자원은 콜리전 없음
 	ResourceMesh->SetRelativeLocation(FVector(0.0f, 0.0f, 0.0f)); // 높이는 UpdateVisual()에서 동적 설정
+
+	// 타일 위젯 컴포넌트 생성 (루트 씬 컴포넌트에 부착)
+	TileWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("TileWidget"));
+	TileWidget->SetupAttachment(RootSceneComponent);
+	TileWidget->SetWidgetSpace(EWidgetSpace::World); // World Space로 설정 (카메라 줌/이동 영향받음)
+	TileWidget->SetCollisionEnabled(ECollisionEnabled::NoCollision); // 위젯은 콜리전 없음
+	TileWidget->SetRelativeLocation(FVector(0.0f, 0.0f, 0.0f)); // 높이는 UpdateVisual()에서 동적 설정
+	TileWidget->SetRelativeRotation(FRotator(90.0f, 180.0f, 0.0f)); // Y축 90도, Z축 180도 회전
+	TileWidget->SetRelativeScale3D(FVector(0.75f, 0.75f, 0.75f)); // 위젯 스케일 0.75배
+	
+	// 위젯 클래스 로드 및 설정
+	static ConstructorHelpers::FClassFinder<UUserWidget> TileWidgetClassFinder(TEXT("/Game/Civilization/Widget/TileWidget/W_Tile"));
+	if (TileWidgetClassFinder.Succeeded())
+	{
+		TileWidget->SetWidgetClass(TileWidgetClassFinder.Class);
+	}
+	
+	// 초기에는 위젯 숨김
+	TileWidget->SetVisibility(false);
 
 	// 기본값 초기화
 	TileData = nullptr;
@@ -223,37 +243,34 @@ void AWorldTileActor::UpdateVisual()
 		ResourceMesh->SetVisibility(false);
 	}
 
-	// 구매 가능 타일 하이라이트 처리
-	if (bIsPurchaseableHighlighted)
+	// 위젯 컴포넌트 지형 높이에 따른 Z 오프셋 처리
+	if (TileWidget)
 	{
-		// 하이라이트 효과 적용 (예: 메시 색상 변경)
-		// 현재는 Material 파라미터를 사용하지 않으므로, 향후 Material에 파라미터를 추가하면 여기서 설정
-		// TileMesh->SetScalarParameterValueOnMaterials(TEXT("IsHighlighted"), 1.0f);
+		// 지형 높이에 따른 Z 오프셋 계산 (UnitManager의 유닛 위치와 동일한 높이)
+		float WidgetZOffset = 74.0f; // 평지 기본값
 		
-		// 임시로 메시에 Emissive 색상 변경을 위한 Material Instance Dynamic 생성
-		if (TileMesh && TileMesh->GetMaterial(0))
+		switch (LandType)
 		{
-			UMaterialInstanceDynamic* DynamicMaterial = TileMesh->CreateDynamicMaterialInstance(0);
-			if (DynamicMaterial)
-			{
-				// 하이라이트 색상 설정 (금색 계열)
-				DynamicMaterial->SetVectorParameterValue(TEXT("EmissiveColor"), FLinearColor(1.0f, 0.8f, 0.0f, 1.0f));
-			}
+		case ELandType::Plains:
+			WidgetZOffset = 74.0f; // 평지
+			break;
+		case ELandType::Hills:
+			WidgetZOffset = 148.0f; // 언덕
+			break;
+		case ELandType::Mountains:
+			WidgetZOffset = 222.0f; // 산
+			break;
+		default:
+			WidgetZOffset = 74.0f; // 기본값 (평지)
+			break;
 		}
+
+		// 위젯 위치 업데이트 (X, Y는 유지하고 Z만 변경)
+		FVector CurrentLocation = TileWidget->GetRelativeLocation();
+		TileWidget->SetRelativeLocation(FVector(CurrentLocation.X, CurrentLocation.Y, WidgetZOffset));
 	}
-	else
-	{
-		// 하이라이트 효과 제거
-		if (TileMesh && TileMesh->GetMaterial(0))
-		{
-			UMaterialInstanceDynamic* DynamicMaterial = TileMesh->CreateDynamicMaterialInstance(0);
-			if (DynamicMaterial)
-			{
-				// 기본 색상으로 복원
-				DynamicMaterial->SetVectorParameterValue(TEXT("EmissiveColor"), FLinearColor(0.0f, 0.0f, 0.0f, 1.0f));
-			}
-		}
-	}
+
+	
 
 }
 
@@ -561,6 +578,15 @@ void AWorldTileActor::OnBeginCursorOver(UPrimitiveComponent* TouchedComponent)
 	
 	// 전투 호버 델리게이트 브로드캐스트
 	OnCombatTileHoverBegin.Broadcast(TileData);
+	
+	// 구매 가능한 타일이고 위젯이 표시되어 있을 때 호버 효과 적용
+	if (bIsPurchaseableHighlighted && TileWidget && TileWidget->IsVisible())
+	{
+		if (UTileUI* TileUIWidget = Cast<UTileUI>(TileWidget->GetWidget()))
+		{
+			TileUIWidget->SetHovered(true);
+		}
+	}
 }
 
 void AWorldTileActor::OnEndCursorOver(UPrimitiveComponent* TouchedComponent)
@@ -573,6 +599,15 @@ void AWorldTileActor::OnEndCursorOver(UPrimitiveComponent* TouchedComponent)
 	
 	// 전투 호버 델리게이트 브로드캐스트
 	OnCombatTileHoverEnd.Broadcast(TileData);
+	
+	// 구매 가능한 타일이고 위젯이 표시되어 있을 때 호버 효과 제거
+	if (bIsPurchaseableHighlighted && TileWidget && TileWidget->IsVisible())
+	{
+		if (UTileUI* TileUIWidget = Cast<UTileUI>(TileWidget->GetWidget()))
+		{
+			TileUIWidget->SetHovered(false);
+		}
+	}
 }
 
 void AWorldTileActor::SetSelected(bool bSelected)
@@ -593,7 +628,47 @@ void AWorldTileActor::SetPurchaseableHighlight(bool bHighlight)
 {
 	bIsPurchaseableHighlighted = bHighlight;
 	
-	// 외형 업데이트
-	UpdateVisual();
+	// WidgetComponent의 Visibility로 제어
+	if (TileWidget)
+	{
+		if (bHighlight)
+		{
+			// 하이라이트 활성화: 위젯 표시
+			TileWidget->SetVisibility(true);
+			
+			// 타일 가격 계산 및 표시
+			if (TileData)
+			{
+				FVector2D TileCoordinate = TileData->GetGridPosition();
+				
+				// SuperPlayerState와 WorldComponent 가져오기
+				if (UWorld* World = GetWorld())
+				{
+					if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
+					{
+						ASuperPlayerState* PlayerState = SuperGameInst->GetPlayerState(0);
+						UWorldComponent* WorldComponent = SuperGameInst->GetGeneratedWorldComponent();
+						
+						if (PlayerState && WorldComponent)
+						{
+							// 타일 가격 계산
+							int32 TileCost = PlayerState->CalculateTilePurchaseCost(TileCoordinate, WorldComponent);
+							
+							// 위젯 가져와서 가격 업데이트
+							if (UTileUI* TileUIWidget = Cast<UTileUI>(TileWidget->GetWidget()))
+							{
+								TileUIWidget->UpdateTileCost(TileCost);
+							}
+						}
+					}
+				}
+			}
+		}
+		else
+		{
+			// 하이라이트 비활성화: 위젯 숨김
+			TileWidget->SetVisibility(false);
+		}
+	}
 }
 
