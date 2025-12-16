@@ -103,7 +103,8 @@ private:
 	UProceduralMeshComponent* GetOrCreateBorderMesh(int32 PlayerIndex);
 
 	// 메시 생성 (플레이어별 국경선 데이터로부터)
-	void GenerateBorderMesh(int32 PlayerIndex, const TArray<FVector>& Vertices, const TArray<int32>& Triangles, const TArray<FVector>& Normals, const TArray<FVector2D>& UVs, const TArray<FLinearColor>& Colors);
+	// 색상은 MaterialInstanceDynamic에서 관리되므로 Colors 파라미터 불필요
+	void GenerateBorderMesh(int32 PlayerIndex, const TArray<FVector>& Vertices, const TArray<int32>& Triangles, const TArray<FVector>& Normals, const TArray<FVector2D>& UVs);
 };
 
 

@@ -54,9 +54,6 @@ void UBorderManager::UpdatePlayerBorder(int32 PlayerIndex, const TArray<FVector2
 	TArray<int32> AllTriangles;
 	TArray<FVector> AllNormals;
 	TArray<FVector2D> AllUVs;
-	TArray<FLinearColor> AllColors;
-
-	FLinearColor PlayerColor = GetPlayerColor(PlayerIndex);
 
 	// 각 소유 타일의 꼭짓점 확인
 	for (const FVector2D& TileCoord : OwnedTileCoordinates)
@@ -119,19 +116,13 @@ void UBorderManager::UpdatePlayerBorder(int32 PlayerIndex, const TArray<FVector2
 			AllUVs.Add(FVector2D(0.0f, 1.0f));
 			AllUVs.Add(FVector2D(1.0f, 1.0f));
 			AllUVs.Add(FVector2D(1.0f, 0.0f));
-
-			// 플레이어 색상 적용
-			for (int32 j = 0; j < 4; j++)
-			{
-				AllColors.Add(PlayerColor);
-			}
 		}
 	}
 
 	// ProceduralMeshComponent 생성/업데이트
 	if (AllVertices.Num() > 0)
 	{
-		GenerateBorderMesh(PlayerIndex, AllVertices, AllTriangles, AllNormals, AllUVs, AllColors);
+		GenerateBorderMesh(PlayerIndex, AllVertices, AllTriangles, AllNormals, AllUVs);
 	}
 	else
 	{
@@ -193,14 +184,9 @@ void UBorderManager::ClearAllBorders()
 
 void UBorderManager::SetPlayerColor(int32 PlayerIndex, FLinearColor Color)
 {
+	// 메인 메뉴에서만 호출됨 (게임 중 색상 변경 불가)
+	// 레벨 진입 전에 설정되어야 하며, 메시 생성 시점에 적용됨
 	PlayerColors.Add(PlayerIndex, Color);
-	
-	// 이미 생성된 메시가 있으면 색상 업데이트 (재생성 필요)
-	if (PlayerBorderMeshes.Contains(PlayerIndex))
-	{
-		// 메시 재생성을 위해 UpdatePlayerBorder 호출 필요
-		// 하지만 여기서는 색상만 저장하고, 다음 업데이트 시 적용
-	}
 }
 
 FLinearColor UBorderManager::GetPlayerColor(int32 PlayerIndex) const
@@ -414,7 +400,7 @@ UProceduralMeshComponent* UBorderManager::GetOrCreateBorderMesh(int32 PlayerInde
 	return nullptr;
 }
 
-void UBorderManager::GenerateBorderMesh(int32 PlayerIndex, const TArray<FVector>& Vertices, const TArray<int32>& Triangles, const TArray<FVector>& Normals, const TArray<FVector2D>& UVs, const TArray<FLinearColor>& Colors)
+void UBorderManager::GenerateBorderMesh(int32 PlayerIndex, const TArray<FVector>& Vertices, const TArray<int32>& Triangles, const TArray<FVector>& Normals, const TArray<FVector2D>& UVs)
 {
 	UProceduralMeshComponent* MeshComp = GetOrCreateBorderMesh(PlayerIndex);
 	if (!MeshComp)
@@ -425,27 +411,8 @@ void UBorderManager::GenerateBorderMesh(int32 PlayerIndex, const TArray<FVector>
 	// 기존 메시 제거
 	MeshComp->ClearAllMeshSections();
 
-	// MaterialInstanceDynamic의 색상 업데이트
-	if (TObjectPtr<UMaterialInstanceDynamic>* MaterialPtr = PlayerMaterials.Find(PlayerIndex))
-	{
-		if (UMaterialInstanceDynamic* DynamicMaterial = MaterialPtr->Get())
-		{
-			FLinearColor PlayerColor = GetPlayerColor(PlayerIndex);
-			
-			// EmissiveColor를 매우 밝게 설정하여 라이팅 영향 최소화
-			FLinearColor BrightColor = PlayerColor * EmissiveIntensity;
-			
-			// 여러 파라미터 업데이트 (머티리얼에 따라 다름)
-			DynamicMaterial->SetVectorParameterValue(FName("EmissiveColor"), BrightColor);
-			DynamicMaterial->SetVectorParameterValue(FName("Emissive"), BrightColor);
-			// Emissive Intensity를 별도로 설정 (일부 머티리얼에서 필요)
-			DynamicMaterial->SetScalarParameterValue(FName("EmissiveIntensity"), EmissiveIntensity);
-			DynamicMaterial->SetScalarParameterValue(FName("EmissivePower"), EmissiveIntensity);
-			DynamicMaterial->SetVectorParameterValue(FName("BaseColor"), PlayerColor);
-			DynamicMaterial->SetVectorParameterValue(FName("Color"), PlayerColor);
-			DynamicMaterial->SetVectorParameterValue(FName("DiffuseColor"), PlayerColor);
-		}
-	}
+	// 색상은 GetOrCreateBorderMesh()에서 처음 생성될 때만 설정됨
+	// 게임 중 색상 변경이 없으므로 여기서 업데이트할 필요 없음
 
 	// FLinearColor를 FColor로 변환 (흰색으로 설정 - MaterialInstanceDynamic의 색상이 적용됨)
 	TArray<FColor> VertexColors;
