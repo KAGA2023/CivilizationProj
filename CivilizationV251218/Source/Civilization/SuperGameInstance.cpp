@@ -7,6 +7,7 @@
 #include "Unit/UnitManager.h"
 #include "Facility/FacilityManager.h"
 #include "Border/BorderManager.h"
+#include "Diplomacy/DiplomacyManager.h"
 #include "SuperPlayerState.h"
 
 USuperGameInstance::USuperGameInstance()
@@ -113,6 +114,20 @@ void USuperGameInstance::ClearBorderManager()
 		// 가비지 컬렉션 대상으로 표시
 		BorderManager->MarkAsGarbage();
 		BorderManager = nullptr;
+	}
+}
+
+void USuperGameInstance::SetDiplomacyManager(UDiplomacyManager* InDiplomacyManager)
+{
+	DiplomacyManager = InDiplomacyManager;
+}
+
+void USuperGameInstance::ClearDiplomacyManager()
+{
+	if (DiplomacyManager)
+	{
+		DiplomacyManager->MarkAsGarbage();
+		DiplomacyManager = nullptr;
 	}
 }
 

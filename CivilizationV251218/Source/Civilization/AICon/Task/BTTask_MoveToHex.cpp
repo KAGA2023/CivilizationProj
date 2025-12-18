@@ -17,12 +17,16 @@ UBTTask_MoveToHex::UBTTask_MoveToHex()
     BBKey_TargetHexPosition.SelectedKeyName = TEXT("TargetHexPosition");
     
     // Task가 틱을 사용하도록 설정
-    bCreateNodeInstance = false;
+    // 해결 B: 유닛(AI)마다 Task 인스턴스를 생성하여 멤버 변수 상태가 공유되지 않도록 함
+    bCreateNodeInstance = true;
     bNotifyTick = true; // TickTask를 사용하기 위해 필수!
 }
 
 EBTNodeResult::Type UBTTask_MoveToHex::ExecuteTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory)
 {
+    // 해결 B: 같은 유닛에서도 이전 실행의 점프 기록이 남지 않도록 매 실행마다 리셋
+    LastJumpedTargetHex = FVector2D::ZeroVector;
+
     AAIController* AIController = OwnerComp.GetAIOwner();
     if (!AIController)
     {
@@ -48,8 +52,10 @@ EBTNodeResult::Type UBTTask_MoveToHex::ExecuteTask(UBehaviorTreeComponent& Owner
     }
 
     // Blackboard에서 목표 헥스 좌표 가져오기
+    // 주의: WorldComponent::GetTileAtHex는 FVector2D를 "정확히" 키로 찾으므로
+    // 소수 좌표가 들어가면 타일을 못 찾을 수 있음 → 반드시 정수 좌표로 보정
     FVector TargetHexVector = Blackboard->GetValueAsVector(BBKey_TargetHexPosition.SelectedKeyName);
-    FVector2D TargetHex(TargetHexVector.X, TargetHexVector.Y);
+    FVector2D TargetHex(FMath::RoundToInt(TargetHexVector.X), FMath::RoundToInt(TargetHexVector.Y));
 
     // 유효하지 않은 헥스 좌표 확인
     if (TargetHex.X == 0.0f && TargetHex.Y == 0.0f)
@@ -118,9 +124,9 @@ void UBTTask_MoveToHex::TickTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeM
         return;
     }
 
-    // Blackboard에서 목표 헥스 좌표 가져오기
+    // Blackboard에서 목표 헥스 좌표 가져오기 (정수 좌표로 보정)
     FVector TargetHexVector = Blackboard->GetValueAsVector(BBKey_TargetHexPosition.SelectedKeyName);
-    FVector2D TargetHex(TargetHexVector.X, TargetHexVector.Y);
+    FVector2D TargetHex(FMath::RoundToInt(TargetHexVector.X), FMath::RoundToInt(TargetHexVector.Y));
 
     // 헥스 좌표를 월드 좌표로 변환
     FVector TargetWorldPosition = GetWorldPositionFromHex(TargetHex, UnitAIController);
@@ -160,7 +166,8 @@ void UBTTask_MoveToHex::TickTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeM
         else
         {
             // 경로가 없으면 월드 좌표로 변환
-            CurrentHex = UnitAIController->WorldToHex(CurrentPosition);
+            FVector2D CurrentHexFloat = UnitAIController->WorldToHex(CurrentPosition);
+            CurrentHex = FVector2D(FMath::RoundToInt(CurrentHexFloat.X), FMath::RoundToInt(CurrentHexFloat.Y));
         }
         
         // WorldComponent에서 타일 정보 가져오기
@@ -266,6 +273,9 @@ void UBTTask_MoveToHex::TickTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeM
 void UBTTask_MoveToHex::OnTaskFinished(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory, EBTNodeResult::Type TaskResult)
 {
     Super::OnTaskFinished(OwnerComp, NodeMemory, TaskResult);
+
+    // 해결 B: 안전하게 종료 시에도 리셋
+    LastJumpedTargetHex = FVector2D::ZeroVector;
 }
 
 FVector UBTTask_MoveToHex::GetWorldPositionFromHex(FVector2D HexPosition, AUnitAIController* AIController) const

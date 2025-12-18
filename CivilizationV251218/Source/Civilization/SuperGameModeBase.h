@@ -57,4 +57,8 @@ protected:
 	void InitializeGame(); // 게임을 초기화합니다
 	void CheckGameEndConditions(); // 게임 종료 조건을 확인합니다
 	void CreateAllPlayerStates(); // 모든 플레이어 스테이트 생성 (Player 0 + AI 1~3)
+
+	// 라운드 변경 이벤트 핸들러
+	UFUNCTION()
+	void HandleRoundChanged(FTurnStruct NewTurn);
 };

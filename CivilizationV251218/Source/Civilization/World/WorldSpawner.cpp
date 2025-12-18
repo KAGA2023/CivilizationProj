@@ -5,6 +5,7 @@
 #include "../Unit/UnitManager.h"
 #include "../Facility/FacilityManager.h"
 #include "../Border/BorderManager.h"
+#include "../Diplomacy/DiplomacyManager.h"
 #include "../City/CityActor.h"
 #include "../SuperPlayerState.h"
 #include "../City/CityComponent.h"
@@ -63,6 +64,16 @@ void AWorldSpawner::BeginPlay()
 					{
 						BorderManager->Initialize(WorldComponent, this);
 						SuperGameInst->SetBorderManager(BorderManager);
+					}
+
+					// DiplomacyManager 생성 및 설정
+					UDiplomacyManager* DiplomacyManager = NewObject<UDiplomacyManager>(this);
+					if (DiplomacyManager)
+					{
+						// 플레이어 수 기준으로 외교 데이터 초기화
+						const int32 NumPlayers = SuperGameInst->GetPlayerStateCount();
+						DiplomacyManager->Initialize(NumPlayers);
+						SuperGameInst->SetDiplomacyManager(DiplomacyManager);
 					}
 				}
 				

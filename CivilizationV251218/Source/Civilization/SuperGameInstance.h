@@ -100,6 +100,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Border Management") // 국경선 매니저 정리 (메모리 해제)
 	void ClearBorderManager();
 
+	// 외교 매니저 관리
+	UPROPERTY(BlueprintReadWrite, Category = "Diplomacy Management") // 외교 매니저
+	class UDiplomacyManager* DiplomacyManager = nullptr;
+
+	UFUNCTION(BlueprintCallable, Category = "Diplomacy Management") // 외교 매니저 설정
+	void SetDiplomacyManager(class UDiplomacyManager* InDiplomacyManager);
+
+	UFUNCTION(BlueprintCallable, Category = "Diplomacy Management") // 외교 매니저 가져오기
+	class UDiplomacyManager* GetDiplomacyManager() const { return DiplomacyManager; }
+
+	UFUNCTION(BlueprintCallable, Category = "Diplomacy Management") // 외교 매니저 정리 (메모리 해제)
+	void ClearDiplomacyManager();
+
 	// 플레이어 스테이트 관리
 	UPROPERTY(BlueprintReadWrite, Category = "Player Management") // 모든 플레이어 스테이트
 	TArray<class ASuperPlayerState*> PlayerStates;

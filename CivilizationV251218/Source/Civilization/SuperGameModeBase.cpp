@@ -6,6 +6,7 @@
 #include "Unit/UnitManager.h"
 #include "Unit/UnitCharacterBase.h"
 #include "Status/UnitStatusComponent.h"
+#include "Diplomacy/DiplomacyManager.h"
 
 ASuperGameModeBase::ASuperGameModeBase()
 {
@@ -29,6 +30,9 @@ void ASuperGameModeBase::BeginPlay()
 	if (TurnComponent)
 	{
 		TurnComponent->RegisterComponent();
+
+		// 라운드 변경 시 외교 매니저에 알림
+		TurnComponent->OnRoundChanged.AddDynamic(this, &ASuperGameModeBase::HandleRoundChanged);
 	}
 	
 	// 모든 플레이어 스테이트 생성 (Player 0 + AI 1~3, 총 4개)
@@ -156,6 +160,17 @@ void ASuperGameModeBase::CheckGameEndConditions()
 	// - 지배 승리
 	// - 과학 승리
 	// - 외교 승리
+}
+
+void ASuperGameModeBase::HandleRoundChanged(FTurnStruct NewTurn)
+{
+	if (USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance()))
+	{
+		if (UDiplomacyManager* DiplomacyManager = GameInstance->GetDiplomacyManager())
+		{
+			DiplomacyManager->OnRoundStarted(NewTurn.RoundNumber);
+		}
+	}
 }
 
 void ASuperGameModeBase::PostLogin(APlayerController* NewPlayer)
