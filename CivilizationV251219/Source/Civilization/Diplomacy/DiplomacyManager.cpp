@@ -14,7 +14,7 @@ void UDiplomacyManager::Initialize(int32 NumPlayers)
 	PairStates.Empty();
 	Attitudes.Empty();
 
-	// 플레이어 쌍(A <-> B)의 기본 외교 상태(평화) 설정
+	// 플레이어 쌍(A <-> B)의 기본 외교 상태 설정
 	for (int32 PlayerA = 0; PlayerA < NumPlayers; ++PlayerA)
 	{
 		for (int32 PlayerB = PlayerA + 1; PlayerB < NumPlayers; ++PlayerB)
@@ -22,9 +22,12 @@ void UDiplomacyManager::Initialize(int32 NumPlayers)
 			FDiplomacyPairKey PairKey(PlayerA, PlayerB);
 			FDiplomacyPairState PairState;
 
-			PairState.Status = EDiplomacyStatusType::Peace;
-			PairState.Treaties.Reset();
-			PairState.LastStatusChangedRound = 0;
+			PairState.Status = EDiplomacyStatusType::None;
+			PairState.LastWarRound = 0;
+			PairState.LastPeaceRound = 0;
+			PairState.LastAllianceRound = 0;
+			PairState.LastDenounceRound = 0;
+			PairState.LastGiftRound = 0;
 
 			PairStates.Add(PairKey, PairState);
 		}
@@ -49,10 +52,10 @@ void UDiplomacyManager::Initialize(int32 NumPlayers)
 
 EDiplomacyStatusType UDiplomacyManager::GetStatus(int32 PlayerA, int32 PlayerB) const
 {
-	// 유효하지 않은 플레이어 인덱스면 기본값(평화) 반환
+	// 유효하지 않은 플레이어 인덱스면 기본값(None) 반환
 	if (PlayerA == PlayerB || PlayerA < 0 || PlayerB < 0 || PlayerA >= PlayerCount || PlayerB >= PlayerCount)
 	{
-		return EDiplomacyStatusType::Peace;
+		return EDiplomacyStatusType::None;
 	}
 
 	FDiplomacyPairKey PairKey(PlayerA, PlayerB);
@@ -62,8 +65,8 @@ EDiplomacyStatusType UDiplomacyManager::GetStatus(int32 PlayerA, int32 PlayerB) 
 		return FoundState->Status;
 	}
 
-	// 맵에 없으면 기본적으로 평화 상태로 간주
-	return EDiplomacyStatusType::Peace;
+	// 맵에 없으면 기본적으로 None 상태로 간주
+	return EDiplomacyStatusType::None;
 }
 
 bool UDiplomacyManager::IsAtWar(int32 PlayerA, int32 PlayerB) const
@@ -86,11 +89,20 @@ bool UDiplomacyManager::DeclareWar(int32 PlayerA, int32 PlayerB, int32 CurrentRo
 	{
 		// 존재하지 않으면 기본 값으로 생성
 		FDiplomacyPairState NewState;
-		NewState.Status = EDiplomacyStatusType::Peace;
-		NewState.Treaties.Reset();
-		NewState.LastStatusChangedRound = 0;
+		NewState.Status = EDiplomacyStatusType::None;
+		NewState.LastWarRound = 0;
+		NewState.LastPeaceRound = 0;
+		NewState.LastAllianceRound = 0;
+		NewState.LastDenounceRound = 0;
+		NewState.LastGiftRound = 0;
 
 		State = &PairStates.Add(PairKey, NewState);
+	}
+
+	// 동맹 상태면 전쟁 선포 불가
+	if (State->Status == EDiplomacyStatusType::Alliance)
+	{
+		return false;
 	}
 
 	// 이미 전쟁 상태면 변경 없음
@@ -100,7 +112,7 @@ bool UDiplomacyManager::DeclareWar(int32 PlayerA, int32 PlayerB, int32 CurrentRo
 	}
 
 	State->Status = EDiplomacyStatusType::War;
-	State->LastStatusChangedRound = CurrentRound;
+	State->LastWarRound = CurrentRound;
 
 	// 전쟁 상태 변경 델리게이트 브로드캐스트
 	OnDiplomacyStatusChanged.Broadcast(PlayerA, PlayerB, EDiplomacyStatusType::War);
@@ -123,9 +135,12 @@ bool UDiplomacyManager::MakePeace(int32 PlayerA, int32 PlayerB, int32 CurrentRou
 	{
 		// 존재하지 않으면 기본 값으로 생성
 		FDiplomacyPairState NewState;
-		NewState.Status = EDiplomacyStatusType::Peace;
-		NewState.Treaties.Reset();
-		NewState.LastStatusChangedRound = 0;
+		NewState.Status = EDiplomacyStatusType::None;
+		NewState.LastWarRound = 0;
+		NewState.LastPeaceRound = 0;
+		NewState.LastAllianceRound = 0;
+		NewState.LastDenounceRound = 0;
+		NewState.LastGiftRound = 0;
 
 		State = &PairStates.Add(PairKey, NewState);
 	}
@@ -137,7 +152,7 @@ bool UDiplomacyManager::MakePeace(int32 PlayerA, int32 PlayerB, int32 CurrentRou
 	}
 
 	State->Status = EDiplomacyStatusType::Peace;
-	State->LastStatusChangedRound = CurrentRound;
+	State->LastPeaceRound = CurrentRound;
 
 	// 평화 상태 변경 델리게이트 브로드캐스트
 	OnDiplomacyStatusChanged.Broadcast(PlayerA, PlayerB, EDiplomacyStatusType::Peace);
@@ -145,14 +160,10 @@ bool UDiplomacyManager::MakePeace(int32 PlayerA, int32 PlayerB, int32 CurrentRou
 	return true;
 }
 
-bool UDiplomacyManager::AddTreaty(int32 PlayerA, int32 PlayerB, EDiplomacyTreatyType TreatyType, int32 StartRound, int32 DurationRounds)
+bool UDiplomacyManager::MakeAlliance(int32 PlayerA, int32 PlayerB, int32 CurrentRound)
 {
-	// 인덱스 및 입력 값 검증
+	// 자기 자신과의 동맹은 의미 없으므로 무시
 	if (PlayerA == PlayerB || PlayerA < 0 || PlayerB < 0 || PlayerA >= PlayerCount || PlayerB >= PlayerCount)
-	{
-		return false;
-	}
-	if (DurationRounds <= 0 || StartRound < 0)
 	{
 		return false;
 	}
@@ -162,121 +173,59 @@ bool UDiplomacyManager::AddTreaty(int32 PlayerA, int32 PlayerB, EDiplomacyTreaty
 
 	if (!State)
 	{
+		// 존재하지 않으면 기본 값으로 생성
 		FDiplomacyPairState NewState;
-		NewState.Status = EDiplomacyStatusType::Peace;
-		NewState.Treaties.Reset();
-		NewState.LastStatusChangedRound = 0;
+		NewState.Status = EDiplomacyStatusType::None;
+		NewState.LastWarRound = 0;
+		NewState.LastPeaceRound = 0;
+		NewState.LastAllianceRound = 0;
+		NewState.LastDenounceRound = 0;
+		NewState.LastGiftRound = 0;
 
 		State = &PairStates.Add(PairKey, NewState);
 	}
 
-	// 중복 조약 방지: 동일 타입의 활성 조약이 이미 있으면 추가 금지
-	for (const FDiplomacyTreaty& Existing : State->Treaties)
+	// 이미 동맹 상태면 변경 없음
+	if (State->Status == EDiplomacyStatusType::Alliance)
 	{
-		if (Existing.Treaty == TreatyType && Existing.IsActiveAtRound(StartRound))
-		{
-			return false;
-		}
+		return false;
 	}
 
-	FDiplomacyTreaty NewTreaty;
-	NewTreaty.Treaty = TreatyType;
-	NewTreaty.StartRound = StartRound;
-	NewTreaty.EndRound = StartRound + DurationRounds - 1;
+	State->Status = EDiplomacyStatusType::Alliance;
+	State->LastAllianceRound = CurrentRound;
 
-	State->Treaties.Add(NewTreaty);
-
-	// 조약 추가 델리게이트 브로드캐스트
-	OnDiplomacyTreatyChanged.Broadcast(PlayerA, PlayerB, TreatyType, true);
+	// 동맹 상태 변경 델리게이트 브로드캐스트
+	OnDiplomacyStatusChanged.Broadcast(PlayerA, PlayerB, EDiplomacyStatusType::Alliance);
 
 	return true;
 }
 
-bool UDiplomacyManager::CancelTreaty(int32 PlayerA, int32 PlayerB, EDiplomacyTreatyType TreatyType, int32 CurrentRound)
-{
-	if (PlayerA == PlayerB || PlayerA < 0 || PlayerB < 0 || PlayerA >= PlayerCount || PlayerB >= PlayerCount)
-	{
-		return false;
-	}
-
-	FDiplomacyPairKey PairKey(PlayerA, PlayerB);
-	FDiplomacyPairState* State = PairStates.Find(PairKey);
-
-	if (!State)
-	{
-		return false;
-	}
-
-	bool bRemovedAny = false;
-
-	// 뒤에서부터 순회하며 제거
-	for (int32 Index = State->Treaties.Num() - 1; Index >= 0; --Index)
-	{
-		const FDiplomacyTreaty& Treaty = State->Treaties[Index];
-		if (Treaty.Treaty == TreatyType && Treaty.IsActiveAtRound(CurrentRound))
-		{
-			State->Treaties.RemoveAtSwap(Index);
-			bRemovedAny = true;
-		}
-	}
-
-	// 하나 이상의 조약이 제거되었다면 델리게이트 브로드캐스트
-	if (bRemovedAny)
-	{
-		OnDiplomacyTreatyChanged.Broadcast(PlayerA, PlayerB, TreatyType, false);
-	}
-
-	return bRemovedAny;
-}
-
-bool UDiplomacyManager::HasActiveTreaty(int32 PlayerA, int32 PlayerB, EDiplomacyTreatyType TreatyType, int32 CurrentRound) const
-{
-	if (PlayerA == PlayerB || PlayerA < 0 || PlayerB < 0 || PlayerA >= PlayerCount || PlayerB >= PlayerCount)
-	{
-		return false;
-	}
-
-	FDiplomacyPairKey PairKey(PlayerA, PlayerB);
-	const FDiplomacyPairState* State = PairStates.Find(PairKey);
-
-	if (!State)
-	{
-		return false;
-	}
-
-	return State->HasActiveTreaty(TreatyType, CurrentRound);
-}
-
-void UDiplomacyManager::OnRoundStarted(int32 NewRound)
+void UDiplomacyManager::OnRoundStarted(int32 CurrentRound)
 {
 	// 이미 처리한 라운드면 중복 처리 방지
-	if (NewRound <= LastProcessedRound)
+	if (CurrentRound <= LastProcessedRound)
 	{
 		return;
 	}
-	LastProcessedRound = NewRound;
-	CurrentRound = NewRound;
+	LastProcessedRound = CurrentRound;
+	CachedCurrentRound = CurrentRound;
 
-	// 만료된 조약 정리
+	// 동맹 만료 정리 (10라운드 지난 동맹은 자동으로 만료)
 	for (TPair<FDiplomacyPairKey, FDiplomacyPairState>& Pair : PairStates)
 	{
-		TArray<FDiplomacyTreaty>& Treaties = Pair.Value.Treaties;
+		FDiplomacyPairState& State = Pair.Value;
 		const FDiplomacyPairKey& Key = Pair.Key;
 
-		for (int32 Index = Treaties.Num() - 1; Index >= 0; --Index)
+		// 동맹 상태이고 10라운드가 지났으면 만료
+		if (State.Status == EDiplomacyStatusType::Alliance && State.LastAllianceRound > 0)
 		{
-			const FDiplomacyTreaty& Treaty = Treaties[Index];
-
-			// 현재 라운드 기준으로 더 이상 활성화되지 않으면 제거
-			if (!Treaty.IsActiveAtRound(NewRound) && Treaty.EndRound < NewRound)
+			const int32 AllianceDuration = CurrentRound - State.LastAllianceRound;
+			if (AllianceDuration >= 10)
 			{
-				const EDiplomacyTreatyType ExpiredType = Treaty.Treaty;
-
-				// 먼저 실제로 제거
-				Treaties.RemoveAtSwap(Index);
-
-				// 그 다음 델리게이트 브로드캐스트 (상태가 이미 반영된 뒤)
-				OnDiplomacyTreatyChanged.Broadcast(Key.PlayerA, Key.PlayerB, ExpiredType, false);
+				// 동맹 만료: 평화 상태로 변경
+				State.Status = EDiplomacyStatusType::Peace;
+				State.LastPeaceRound = CurrentRound;
+				OnDiplomacyStatusChanged.Broadcast(Key.PlayerA, Key.PlayerB, EDiplomacyStatusType::Peace);
 			}
 		}
 	}
@@ -370,6 +319,97 @@ int32 UDiplomacyManager::IssueAction(const FDiplomacyAction& Action)
 		return -1;
 	}
 
+	FDiplomacyPairKey PairKey(Action.FromPlayerId, Action.ToPlayerId);
+	FDiplomacyPairState* State = PairStates.Find(PairKey);
+
+	// 쿨다운 체크
+	switch (Action.Action)
+	{
+	case EDiplomacyActionType::DeclareWar:
+	{
+		// 동맹 상태면 전쟁 선포 불가
+		if (State && State->Status == EDiplomacyStatusType::Alliance)
+		{
+			return -1;
+		}
+		// 마지막 전쟁/평화 상태 변경 후 10라운드가 지나지 않았으면 불가
+		if (State)
+		{
+			const int32 LastStatusRound = FMath::Max(State->LastWarRound, State->LastPeaceRound);
+			if (LastStatusRound > 0 && (CachedCurrentRound - LastStatusRound) < 10)
+			{
+				return -1;
+			}
+		}
+		// 즉시 실행
+		DeclareWar(Action.FromPlayerId, Action.ToPlayerId, CachedCurrentRound);
+		break;
+	}
+
+	case EDiplomacyActionType::OfferPeace:
+	{
+		// 전쟁 중이 아니면 평화 제안 불가
+		if (!State || State->Status != EDiplomacyStatusType::War)
+		{
+			return -1;
+		}
+		// 마지막 전쟁/평화 상태 변경 후 10라운드가 지나지 않았으면 불가
+		const int32 LastStatusRound = FMath::Max(State->LastWarRound, State->LastPeaceRound);
+		if (LastStatusRound > 0 && (CachedCurrentRound - LastStatusRound) < 10)
+		{
+			return -1;
+		}
+		// 큐에 추가 (허락 필요)
+		break;
+	}
+
+	case EDiplomacyActionType::Denounce:
+	{
+		// 마지막 비난 후 5라운드가 지나지 않았으면 불가
+		if (State && State->LastDenounceRound > 0 && (CachedCurrentRound - State->LastDenounceRound) < 5)
+		{
+			return -1;
+		}
+		// 즉시 실행
+		if (State)
+		{
+			State->LastDenounceRound = CachedCurrentRound;
+		}
+		AddAttitude(Action.ToPlayerId, Action.FromPlayerId, -30);
+		break;
+	}
+
+	case EDiplomacyActionType::SendGift:
+	{
+		// 마지막 선물 후 5라운드가 지나지 않았으면 불가
+		if (State && State->LastGiftRound > 0 && (CachedCurrentRound - State->LastGiftRound) < 5)
+		{
+			return -1;
+		}
+		// 즉시 실행
+		if (State)
+		{
+			State->LastGiftRound = CachedCurrentRound;
+		}
+		AddAttitude(Action.ToPlayerId, Action.FromPlayerId, +25);
+		break;
+	}
+
+	case EDiplomacyActionType::OfferAlliance:
+	{
+		// 동맹 상태면 동맹 제안 불가
+		if (State && State->Status == EDiplomacyStatusType::Alliance)
+		{
+			return -1;
+		}
+		// 큐에 추가 (허락 필요)
+		break;
+	}
+
+	default:
+		return -1;
+	}
+
 	// 로컬 복사본 생성
 	FDiplomacyAction NewAction = Action;
 
@@ -380,9 +420,18 @@ int32 UDiplomacyManager::IssueAction(const FDiplomacyAction& Action)
 	}
 
 	// 항상 현재 라운드를 기록
-	NewAction.IssuedRound = CurrentRound;
+	NewAction.IssuedRound = CachedCurrentRound;
 
-	// 큐에 추가
+	// 즉시 실행 액션은 큐에 추가하지 않음
+	if (Action.Action == EDiplomacyActionType::DeclareWar || 
+		Action.Action == EDiplomacyActionType::Denounce || 
+		Action.Action == EDiplomacyActionType::SendGift)
+	{
+		OnDiplomacyActionIssued.Broadcast(NewAction);
+		return NewAction.ActionId;
+	}
+
+	// 큐에 추가 (OfferPeace, OfferAlliance)
 	PendingActions.Add(NewAction);
 
 	// 델리게이트 브로드캐스트
@@ -412,51 +461,52 @@ void UDiplomacyManager::ResolveAction(int32 ActionId, bool bAccepted)
 
 	const FDiplomacyAction Action = PendingActions[FoundIndex];
 
-	// 액션 타입에 따른 실제 효과 적용
+	FDiplomacyPairKey PairKey(Action.FromPlayerId, Action.ToPlayerId);
+	FDiplomacyPairState* State = PairStates.Find(PairKey);
+
+	// 액션 타입에 따른 처리
 	switch (Action.Action)
 	{
-	case EDiplomacyActionType::DeclareWar:
-		if (bAccepted)
+	case EDiplomacyActionType::OfferPeace:
+	{
+		if (!State || State->Status != EDiplomacyStatusType::War)
 		{
-			DeclareWar(Action.FromPlayerId, Action.ToPlayerId, CurrentRound);
+			// 이미 전쟁 상태가 아니면 무시
+			break;
 		}
-		break;
-
-	case EDiplomacyActionType::DeclareAlliance:
 		if (bAccepted)
 		{
-			// 예시: 30라운드 동안 동맹
-			AddTreaty(Action.FromPlayerId, Action.ToPlayerId, EDiplomacyTreatyType::Alliance, CurrentRound, 10);
+			MakePeace(Action.FromPlayerId, Action.ToPlayerId, CachedCurrentRound);
+			AddAttitude(Action.ToPlayerId, Action.FromPlayerId, +15);
+			AddAttitude(Action.FromPlayerId, Action.ToPlayerId, +10);
 		}
 		else
 		{
-			// 거절 패널티 예시: 호감도 감소
+			AddAttitude(Action.ToPlayerId, Action.FromPlayerId, -10);
+			AddAttitude(Action.FromPlayerId, Action.ToPlayerId, -5);
+		}
+		break;
+	}
+
+	case EDiplomacyActionType::OfferAlliance:
+	{
+		if (State && State->Status == EDiplomacyStatusType::Alliance)
+		{
+			// 이미 동맹 상태면 무시
+			break;
+		}
+		if (bAccepted)
+		{
+			MakeAlliance(Action.FromPlayerId, Action.ToPlayerId, CachedCurrentRound);
+			AddAttitude(Action.ToPlayerId, Action.FromPlayerId, +20);
+			AddAttitude(Action.FromPlayerId, Action.ToPlayerId, +20);
+		}
+		else
+		{
 			AddAttitude(Action.ToPlayerId, Action.FromPlayerId, -15);
 		}
 		break;
-
-	case EDiplomacyActionType::OpenBorders:
-		if (bAccepted)
-		{
-			// 예시: 20라운드 동안 국경 개방
-			AddTreaty(Action.FromPlayerId, Action.ToPlayerId, EDiplomacyTreatyType::OpenBorders, CurrentRound, 10);
-		}
-		else
-		{
-			// 거절 패널티 예시
-			AddAttitude(Action.ToPlayerId, Action.FromPlayerId, -5);
-		}
-		break;
-
-	case EDiplomacyActionType::SendDelegation:
-		// 대표단 파견은 단방향이므로, Issue 시점에 바로 처리하는 식으로 설계할 수도 있음.
-		// 여기서는 별도 처리를 하지 않음.
-		break;
-
-	case EDiplomacyActionType::Denounce:
-		// 비난은 단방향이므로, Issue 시점에 바로 처리하는 식으로 설계할 수도 있음.
-		// 여기서는 별도 처리를 하지 않음.
-		break;
+	}
 
 	default:
 		break;

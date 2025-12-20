@@ -9,31 +9,22 @@
 UENUM(BlueprintType)
 enum class EDiplomacyActionType : uint8
 {
-	DeclareWar			UMETA(DisplayName = "Declare War"),			// 전쟁 선포
-	OfferPeace			UMETA(DisplayName = "Offer Peace"),			// 평화 제안
-	Denounce			UMETA(DisplayName = "Denounce"),			// 국제적 비난
-	Praise				UMETA(DisplayName = "Praise"),				// 국제적 찬사
-	SendGift			UMETA(DisplayName = "Send Gift"),			// 외교 선물
-	OfferAlliance		UMETA(DisplayName = "Offer Alliance"),		// 동맹 제안
-	OfferNonAggression	UMETA(DisplayName = "Offer Non-Aggression"),// 불가침 조약 제안
-	OfferOpenBorders	UMETA(DisplayName = "Offer Open Borders"),	// 국경 개방 제안
+	None			UMETA(DisplayName = "None"),			// 없음
+	DeclareWar		UMETA(DisplayName = "Declare War"),		// 전쟁 선포
+	OfferPeace		UMETA(DisplayName = "Offer Peace"),		// 평화 제안
+	OfferAlliance	UMETA(DisplayName = "Offer Alliance"),	// 동맹 제안
+	Denounce		UMETA(DisplayName = "Denounce"),		// 국제적 비난
+	SendGift		UMETA(DisplayName = "Send Gift"),		// 외교 선물
 };
 
 // 상태 타입 (턴에 제약없는 공통 상태)
 UENUM(BlueprintType)
 enum class EDiplomacyStatusType : uint8
 {
-	Peace	UMETA(DisplayName = "Peace"),	// 평화
-	War		UMETA(DisplayName = "War"),		// 전쟁
-};
-
-// 조약 타입 (턴에 제약있는 공통 상태)
-UENUM(BlueprintType)
-enum class EDiplomacyTreatyType : uint8
-{
-	Alliance			UMETA(DisplayName = "Alliance"),		// 동맹
-	NonAggression		UMETA(DisplayName = "NonAggression"),	// 불가침 조약
-	OpenBorders			UMETA(DisplayName = "Open Borders"),	// 국경 개방
+	None		UMETA(DisplayName = "None"),		// 없음
+	War			UMETA(DisplayName = "War"),			// 전쟁
+	Peace		UMETA(DisplayName = "Peace"),		// 평화
+	Alliance	UMETA(DisplayName = "Alliance"),	// 동맹
 };
 
 // 플레이어 쌍 키
@@ -82,38 +73,7 @@ FORCEINLINE uint32 GetTypeHash(const FDiplomacyPairKey& Key)
 	return HashCombine(::GetTypeHash(Key.PlayerA), ::GetTypeHash(Key.PlayerB));
 }
 
-// 라운드에 제약있는 조약 데이터 (영구 조약 없음)
-USTRUCT(BlueprintType)
-struct CIVILIZATION_API FDiplomacyTreaty
-{
-	GENERATED_BODY()
-
-public:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Diplomacy")
-	EDiplomacyTreatyType Treaty = EDiplomacyTreatyType::OpenBorders;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Diplomacy")
-	int32 StartRound = -1;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Diplomacy")
-	int32 EndRound = -1;
-
-	// 조약이 현재 라운드에 활성화되어 있는지 여부
-	bool IsActiveAtRound(int32 CurrentRound) const
-	{
-		if (StartRound < 0 || EndRound < 0)
-		{
-			return false;
-		}
-		if (CurrentRound < StartRound)
-		{
-			return false;
-		}
-		return CurrentRound <= EndRound;
-	}
-};
-
-// 플레이어 쌍(A<->B)의 공통 상태/조약 데이터
+// 플레이어 쌍(A<->B)의 공통 상태 데이터
 USTRUCT(BlueprintType)
 struct CIVILIZATION_API FDiplomacyPairState
 {
@@ -121,26 +81,27 @@ struct CIVILIZATION_API FDiplomacyPairState
 
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Diplomacy")
-	EDiplomacyStatusType Status = EDiplomacyStatusType::Peace;
+	EDiplomacyStatusType Status = EDiplomacyStatusType::None;
 
+	// 마지막 전쟁상태 된 라운드
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Diplomacy")
-	TArray<FDiplomacyTreaty> Treaties;
+	int32 LastWarRound = 0;
 
+	// 마지막 평화상태 된 라운드
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Diplomacy")
-	int32 LastStatusChangedRound = 0;
+	int32 LastPeaceRound = 0;
 
-	// 현재 라운드에 활성화되어 있는 조약이 있는지 여부
-	bool HasActiveTreaty(EDiplomacyTreatyType Treaty, int32 CurrentRound) const
-	{
-		for (const FDiplomacyTreaty& TreatyData : Treaties)
-		{
-			if (TreatyData.Treaty == Treaty && TreatyData.IsActiveAtRound(CurrentRound))
-			{
-				return true;
-			}
-		}
-		return false;
-	}
+	// 마지막 동맹상태 된 라운드
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Diplomacy")
+	int32 LastAllianceRound = 0;
+
+	// 마지막 비난한 라운드
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Diplomacy")
+	int32 LastDenounceRound = 0;
+
+	// 마지막 선물한 라운드
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Diplomacy")
+	int32 LastGiftRound = 0;
 };
 
 // 외교 액션(요청/선언/제안) 데이터
@@ -151,7 +112,7 @@ struct CIVILIZATION_API FDiplomacyAction
 
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Diplomacy")
-	EDiplomacyActionType Action = EDiplomacyActionType::SendDelegation;
+	EDiplomacyActionType Action = EDiplomacyActionType::None;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Diplomacy")
 	int32 FromPlayerId = 0;

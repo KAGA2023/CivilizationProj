@@ -11,11 +11,8 @@
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDiplomacyActionIssued, const FDiplomacyAction&, Action);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnDiplomacyActionResolved, const FDiplomacyAction&, Action, bool, bAccepted);
 
-// 전쟁/평화 상태 변경 델리게이트
+// 전쟁/평화/동맹 상태 변경 델리게이트
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnDiplomacyStatusChanged, int32, PlayerA, int32, PlayerB, EDiplomacyStatusType, NewStatus);
-
-// 조약 활성/비활성 변경 델리게이트
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FOnDiplomacyTreatyChanged, int32, PlayerA, int32, PlayerB, EDiplomacyTreatyType, TreatyType, bool, bActive);
 
 UCLASS(BlueprintType)
 class CIVILIZATION_API UDiplomacyManager : public UObject
@@ -49,21 +46,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Diplomacy")
 	bool MakePeace(int32 PlayerA, int32 PlayerB, int32 CurrentRound);
 
-	// ================= 조약 =================
-
-	// 조약 추가 (라운드 기반)
+	// 동맹 체결
 	UFUNCTION(BlueprintCallable, Category = "Diplomacy")
-	bool AddTreaty(int32 PlayerA, int32 PlayerB, EDiplomacyTreatyType TreatyType, int32 StartRound, int32 DurationRounds);
+	bool MakeAlliance(int32 PlayerA, int32 PlayerB, int32 CurrentRound);
 
-	// 조약 조기 종료 (과거 기록은 남기지 않음)
-	UFUNCTION(BlueprintCallable, Category = "Diplomacy")
-	bool CancelTreaty(int32 PlayerA, int32 PlayerB, EDiplomacyTreatyType TreatyType, int32 CurrentRound);
-
-	// 현재 라운드에 활성화된 조약이 있는지 확인
-	UFUNCTION(BlueprintCallable, Category = "Diplomacy")
-	bool HasActiveTreaty(int32 PlayerA, int32 PlayerB, EDiplomacyTreatyType TreatyType, int32 CurrentRound) const;
-
-	// 새 라운드 시작 시 호출 (조약 만료 정리 등)
+	// 새 라운드 시작 시 호출 (동맹 만료 정리 등)
 	UFUNCTION(BlueprintCallable, Category = "Diplomacy")
 	void OnRoundStarted(int32 CurrentRound);
 
@@ -80,10 +67,6 @@ public:
 	// 전쟁/평화 상태가 바뀌었을 때
 	UPROPERTY(BlueprintAssignable, Category = "Diplomacy|Events")
 	FOnDiplomacyStatusChanged OnDiplomacyStatusChanged;
-
-	// 조약이 활성/비활성으로 바뀌었을 때
-	UPROPERTY(BlueprintAssignable, Category = "Diplomacy|Events")
-	FOnDiplomacyTreatyChanged OnDiplomacyTreatyChanged;
 
 	// ================= 호감도 =================
 
@@ -120,7 +103,7 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Diplomacy")
 	int32 PlayerCount = 0;
 
-	// 플레이어 쌍(A<->B)의 공통 상태/조약 데이터 맵
+	// 플레이어 쌍(A<->B)의 공통 상태 데이터 맵
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Diplomacy")
 	TMap<FDiplomacyPairKey, FDiplomacyPairState> PairStates;
 
@@ -130,8 +113,8 @@ public:
 	// 마지막으로 처리한 라운드 번호 (OnRoundStarted 중복 호출 방지용)
 	int32 LastProcessedRound = -1;
 
-	// 현재 라운드 번호 (외교 액션/조약에 사용)
-	int32 CurrentRound = 1;
+	// 현재 라운드 번호 캐시 (외교 액션/조약에 사용)
+	int32 CachedCurrentRound = 1;
 
 	// 처리 대기 중인 외교 액션들
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Diplomacy|Action")
