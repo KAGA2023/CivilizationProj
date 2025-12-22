@@ -31,6 +31,11 @@ ASuperPlayerState::ASuperPlayerState()
     // 플레이어 인덱스 초기화
     PlayerIndex = -1;
 
+    // 국가 정보 초기화
+    CountryName = TEXT("");
+    CountryLargeImg = nullptr;
+    CountrySmallImg = nullptr;
+
     // 타일 관리 초기화
     TotalOwnedTiles = 0;
     OwnedTileCoordinates.Empty();

@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "../World/WorldTileActor.h"
+#include "../Diplomacy/DiplomacyStruct.h"
 #include "MainHUD.generated.h"
 
 // 플레이어 0의 도시 타일 클릭 이벤트 델리게이트
@@ -32,6 +33,9 @@ protected:
 
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
 	class UHorizontalBox* StrategicResourceHB = nullptr;
+
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+	class UHorizontalBox* CountryHB = nullptr;
 
 	// 데이터 업데이트 함수
 	UFUNCTION(BlueprintCallable, Category = "HUD")
@@ -92,6 +96,14 @@ protected:
 	void UpdateStrategicResourceSlots();
 	void ClearStrategicResourceSlots();
 
+	// 국가 슬롯 관리
+	void UpdateCountrySlots();
+	void ClearCountrySlots();
+
+	// 국가 슬롯 클릭 콜백
+	UFUNCTION()
+	void OnCountrySlotClicked(int32 TargetPlayerIndex);
+
 	// 플레이어 0의 도시 타일 클릭 이벤트
 	UPROPERTY(BlueprintAssignable, Category = "City Events")
 	FOnCityTileClicked OnCityTileClicked;
@@ -120,6 +132,20 @@ protected:
 	FVector2D CurrentCombatHoverTile = FVector2D::ZeroVector;
 	bool bIsCombatUIOpen = false;
 
+	// DiplomacyUI 위젯 참조 (블루프린트에서 수동 할당)
+	UPROPERTY(BlueprintReadWrite, Category = "Widgets")
+	class UDiplomacyUI* DiplomacyUIWidget = nullptr;
+
+	// 현재 외교 대상 플레이어 인덱스
+	int32 CurrentDiplomacyTargetPlayer = -1;
+	bool bIsDiplomacyUIOpen = false;
+
+	// 외교 UI 열기 함수
+	void OpenDiplomacyUI(int32 TargetPlayerIndex);
+
+	// 외교 UI 닫기 함수
+	void CloseDiplomacyUI();
+
 	// 전투 타일 호버 델리게이트 바인딩 함수
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void BindCombatTileHoverDelegates();
@@ -140,6 +166,24 @@ protected:
 
 	// 전투 UI 닫기 함수
 	void CloseCombatUI();
+
+	// DiplomacyManager 델리게이트 바인딩 함수
+	void BindDiplomacyDelegates();
+
+	// DiplomacyManager 델리게이트 언바인딩 함수
+	void UnbindDiplomacyDelegates();
+
+	// 외교 액션 발행 핸들러
+	UFUNCTION()
+	void OnDiplomacyActionIssuedHandler(const struct FDiplomacyAction& Action);
+
+	// 외교 액션 처리 핸들러
+	UFUNCTION()
+	void OnDiplomacyActionResolvedHandler(const struct FDiplomacyAction& Action, bool bAccepted);
+
+	// 외교 상태 변경 핸들러
+	UFUNCTION()
+	void OnDiplomacyStatusChangedHandler(int32 PlayerA, int32 PlayerB, EDiplomacyStatusType NewStatus);
 
 	// 0.5초 지연 후 바인딩을 위한 타이머
 	FTimerHandle BindCityTileTimerHandle;

@@ -13,6 +13,10 @@
 #include "../Facility/FacilityManager.h"
 #include "../World/WorldStruct.h"
 #include "StrategicResourceSlotUI.h"
+#include "CountrySlotUI.h"
+#include "DiplomacyWidget/DiplomacyUI.h"
+#include "../Diplomacy/DiplomacyManager.h"
+#include "../Diplomacy/DiplomacyStruct.h"
 #include "UnitWidget/BuildFacilityUI.h"
 #include "CombatWidget/UnitCombatUI.h"
 #include "../Unit/UnitManager.h"
@@ -82,6 +86,12 @@ void UMainHUD::NativeConstruct()
 		UnitCombatUIWidget->SetVisibility(ESlateVisibility::Hidden);
 	}
 
+	// DiplomacyUI 위젯 초기화 (Hidden으로 설정)
+	if (DiplomacyUIWidget)
+	{
+		DiplomacyUIWidget->SetVisibility(ESlateVisibility::Hidden);
+	}
+
 	// PlayerState의 골드/인구 변경 델리게이트 바인딩
 	BindPlayerStateDelegates();
 
@@ -91,8 +101,14 @@ void UMainHUD::NativeConstruct()
 	// UnitManager의 전투 실행 완료 델리게이트 바인딩
 	BindCombatExecutedDelegate();
 
+	// DiplomacyManager의 외교 델리게이트 바인딩
+	BindDiplomacyDelegates();
+
 	// 전략 자원 슬롯 초기화
 	UpdateStrategicResourceSlots();
+
+	// 국가 슬롯 초기화
+	UpdateCountrySlots();
 }
 
 void UMainHUD::UpdateHUDData()
@@ -160,9 +176,10 @@ void UMainHUD::OnTurnChanged(FTurnStruct NewTurn)
 	// 턴이 변경될 때마다 HUD 데이터 업데이트
 	UpdateHUDData();
 	
-	// 턴 종료 시 전투 UI 및 시설 UI 닫기
+	// 턴 종료 시 전투 UI 및 시설 UI, 외교 UI 닫기
 	CloseCombatUI();
 	CloseFacilityUI();
+	CloseDiplomacyUI();
 }
 
 void UMainHUD::OnPlayerCityTileClicked()
@@ -611,6 +628,9 @@ void UMainHUD::NativeDestruct()
 			}
 		}
 
+		// DiplomacyManager 델리게이트 바인딩 해제
+		UnbindDiplomacyDelegates();
+
 		// PlayerState 델리게이트 바인딩 해제
 		if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(GetWorld()->GetGameInstance()))
 		{
@@ -747,6 +767,256 @@ void UMainHUD::ClearStrategicResourceSlots()
 	if (StrategicResourceHB)
 	{
 		StrategicResourceHB->ClearChildren();
+	}
+}
+
+void UMainHUD::UpdateCountrySlots()
+{
+	if (!CountryHB)
+	{
+		return;
+	}
+
+	if (!GetWorld())
+	{
+		return;
+	}
+
+	USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(GetWorld()->GetGameInstance());
+	if (!SuperGameInst)
+	{
+		return;
+	}
+
+	// 기존 슬롯 제거
+	ClearCountrySlots();
+
+	// 모든 PlayerState 가져오기
+	TArray<ASuperPlayerState*> PlayerStates = SuperGameInst->PlayerStates;
+	
+	bool bHasAnyCountry = false;
+	for (ASuperPlayerState* PlayerState : PlayerStates)
+	{
+		if (!PlayerState)
+		{
+			continue;
+		}
+
+		// PlayerIndex 0은 제외 (플레이어 본인)
+		int32 PlayerIndex = PlayerState->PlayerIndex;
+		if (PlayerIndex <= 0)
+		{
+			continue;
+		}
+
+		// AI 플레이어만 표시 (PlayerIndex 1~3)
+		bHasAnyCountry = true;
+
+		// CountrySlotUI 클래스 로드
+		UClass* SlotClass = LoadClass<UCountrySlotUI>(nullptr, TEXT("/Game/Civilization/Widget/W_CountrySlot.W_CountrySlot_C"));
+		if (SlotClass)
+		{
+			// 위젯 생성
+			UCountrySlotUI* CountrySlot = CreateWidget<UCountrySlotUI>(this, SlotClass);
+			if (CountrySlot)
+			{
+				// 플레이어 정보 설정
+				CountrySlot->SetupForPlayer(PlayerIndex, PlayerState);
+
+				// 델리게이트 바인딩
+				CountrySlot->OnCountrySlotClicked.AddDynamic(this, &UMainHUD::OnCountrySlotClicked);
+
+				// HorizontalBox에 추가
+				CountryHB->AddChild(CountrySlot);
+
+				// 위젯 가시성 설정
+				CountrySlot->SetVisibility(ESlateVisibility::Visible);
+			}
+		}
+	}
+
+	// 국가 슬롯이 하나도 없으면 HorizontalBox 숨김
+	if (bHasAnyCountry)
+	{
+		CountryHB->SetVisibility(ESlateVisibility::Visible);
+	}
+	else
+	{
+		CountryHB->SetVisibility(ESlateVisibility::Hidden);
+	}
+}
+
+void UMainHUD::ClearCountrySlots()
+{
+	if (CountryHB)
+	{
+		CountryHB->ClearChildren();
+	}
+}
+
+void UMainHUD::OnCountrySlotClicked(int32 TargetPlayerIndex)
+{
+	// 외교 UI 열기
+	OpenDiplomacyUI(TargetPlayerIndex);
+}
+
+void UMainHUD::OpenDiplomacyUI(int32 TargetPlayerIndex)
+{
+	if (!DiplomacyUIWidget || !GetWorld())
+	{
+		return;
+	}
+
+	// GameInstance에서 대상 PlayerState 가져오기
+	USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(GetWorld()->GetGameInstance());
+	if (!SuperGameInst)
+	{
+		return;
+	}
+
+	ASuperPlayerState* TargetPlayerState = SuperGameInst->GetPlayerState(TargetPlayerIndex);
+	if (!TargetPlayerState)
+	{
+		return;
+	}
+
+	// 이미 열려있고 같은 플레이어면 아무것도 안함 (중복 방지)
+	if (bIsDiplomacyUIOpen && CurrentDiplomacyTargetPlayer == TargetPlayerIndex)
+	{
+		return;
+	}
+
+	// 다른 플레이어이거나 새로 열어야 하는 경우: 기존 UI 닫고 새로 열기
+	if (bIsDiplomacyUIOpen)
+	{
+		CloseDiplomacyUI();
+	}
+
+	// 외교 UI 설정 및 표시
+	DiplomacyUIWidget->SetupForPlayer(TargetPlayerIndex, TargetPlayerState);
+	DiplomacyUIWidget->SetVisibility(ESlateVisibility::Visible);
+	CurrentDiplomacyTargetPlayer = TargetPlayerIndex;
+	bIsDiplomacyUIOpen = true;
+}
+
+void UMainHUD::CloseDiplomacyUI()
+{
+	if (DiplomacyUIWidget)
+	{
+		DiplomacyUIWidget->SetVisibility(ESlateVisibility::Hidden);
+	}
+	CurrentDiplomacyTargetPlayer = -1;
+	bIsDiplomacyUIOpen = false;
+}
+
+void UMainHUD::BindDiplomacyDelegates()
+{
+	if (!GetWorld())
+	{
+		return;
+	}
+
+	USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(GetWorld()->GetGameInstance());
+	if (!SuperGameInst)
+	{
+		return;
+	}
+
+	UDiplomacyManager* DiplomacyManager = SuperGameInst->GetDiplomacyManager();
+	if (!DiplomacyManager)
+	{
+		return;
+	}
+
+	// 기존 바인딩 해제 후 새로 바인딩
+	UnbindDiplomacyDelegates();
+
+	// 외교 델리게이트 바인딩
+	DiplomacyManager->OnDiplomacyActionIssued.AddDynamic(this, &UMainHUD::OnDiplomacyActionIssuedHandler);
+	DiplomacyManager->OnDiplomacyActionResolved.AddDynamic(this, &UMainHUD::OnDiplomacyActionResolvedHandler);
+	DiplomacyManager->OnDiplomacyStatusChanged.AddDynamic(this, &UMainHUD::OnDiplomacyStatusChangedHandler);
+}
+
+void UMainHUD::UnbindDiplomacyDelegates()
+{
+	if (!GetWorld())
+	{
+		return;
+	}
+
+	USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(GetWorld()->GetGameInstance());
+	if (!SuperGameInst)
+	{
+		return;
+	}
+
+	UDiplomacyManager* DiplomacyManager = SuperGameInst->GetDiplomacyManager();
+	if (!DiplomacyManager)
+	{
+		return;
+	}
+
+	// 델리게이트 바인딩 해제
+	DiplomacyManager->OnDiplomacyActionIssued.RemoveDynamic(this, &UMainHUD::OnDiplomacyActionIssuedHandler);
+	DiplomacyManager->OnDiplomacyActionResolved.RemoveDynamic(this, &UMainHUD::OnDiplomacyActionResolvedHandler);
+	DiplomacyManager->OnDiplomacyStatusChanged.RemoveDynamic(this, &UMainHUD::OnDiplomacyStatusChangedHandler);
+}
+
+void UMainHUD::OnDiplomacyActionIssuedHandler(const FDiplomacyAction& Action)
+{
+	// 외교 액션이 발행되었을 때
+	// 플레이어 0이 관련된 액션이고, 외교 UI가 열려있으면 버튼 상태 업데이트
+	if (bIsDiplomacyUIOpen && DiplomacyUIWidget)
+	{
+		// FromPlayerId가 0이거나 ToPlayerId가 현재 대상 플레이어인 경우
+		if (Action.FromPlayerId == 0 && Action.ToPlayerId == CurrentDiplomacyTargetPlayer)
+		{
+			// 버튼 상태 업데이트 (쿨다운 반영)
+			DiplomacyUIWidget->UpdateButtonStates();
+		}
+		// ToPlayerId가 0이고 FromPlayerId가 현재 대상 플레이어인 경우 (AI가 플레이어에게 액션 발행)
+		else if (Action.ToPlayerId == 0 && Action.FromPlayerId == CurrentDiplomacyTargetPlayer)
+		{
+			// 버튼 상태 업데이트
+			DiplomacyUIWidget->UpdateButtonStates();
+		}
+	}
+}
+
+void UMainHUD::OnDiplomacyActionResolvedHandler(const FDiplomacyAction& Action, bool bAccepted)
+{
+	// 외교 액션이 처리되었을 때
+	// 플레이어 0이 관련된 액션이고, 외교 UI가 열려있으면 버튼 상태 업데이트
+	if (bIsDiplomacyUIOpen && DiplomacyUIWidget)
+	{
+		// FromPlayerId가 0이거나 ToPlayerId가 현재 대상 플레이어인 경우
+		if (Action.FromPlayerId == 0 && Action.ToPlayerId == CurrentDiplomacyTargetPlayer)
+		{
+			// 버튼 상태 업데이트 (외교 상태 변경 반영)
+			DiplomacyUIWidget->UpdateButtonStates();
+		}
+		// ToPlayerId가 0이고 FromPlayerId가 현재 대상 플레이어인 경우
+		else if (Action.ToPlayerId == 0 && Action.FromPlayerId == CurrentDiplomacyTargetPlayer)
+		{
+			// 버튼 상태 업데이트
+			DiplomacyUIWidget->UpdateButtonStates();
+		}
+	}
+}
+
+void UMainHUD::OnDiplomacyStatusChangedHandler(int32 PlayerA, int32 PlayerB, EDiplomacyStatusType NewStatus)
+{
+	// 외교 상태가 변경되었을 때
+	// 플레이어 0이 관련된 상태 변경이고, 외교 UI가 열려있으면 버튼 상태 업데이트
+	if (bIsDiplomacyUIOpen && DiplomacyUIWidget)
+	{
+		// 플레이어 0과 현재 대상 플레이어 간의 상태 변경인지 확인
+		if ((PlayerA == 0 && PlayerB == CurrentDiplomacyTargetPlayer) ||
+			(PlayerB == 0 && PlayerA == CurrentDiplomacyTargetPlayer))
+		{
+			// 버튼 상태 업데이트 (외교 상태 변경 반영)
+			DiplomacyUIWidget->UpdateButtonStates();
+		}
 	}
 }
 

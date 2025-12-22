@@ -11,6 +11,7 @@
 class UWorldComponent;
 class UCityComponent;
 class UResearchComponent;
+class UTexture2D;
 
 // 골드 변경 델리게이트
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnGoldChanged, int32, NewGold);
@@ -49,6 +50,16 @@ public:
     // ========== 플레이어 인덱스 ==========
     UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Player Info")
     int32 PlayerIndex = -1; // 플레이어 인덱스 (0=Player, 1~3=AI)
+
+    // ========== 국가 정보 ==========
+    UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Player Info")
+    FString CountryName = TEXT(""); // 국가 이름
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Player Info")
+    TSoftObjectPtr<UTexture2D> CountryLargeImg; // 국가 큰 이미지 (외교 UI 등에서 사용)
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Player Info")
+    TSoftObjectPtr<UTexture2D> CountrySmallImg; // 국가 작은 이미지 (슬롯 UI 등에서 사용)
 
     // ========== 타일 관리 시스템 ==========
     UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Tile Management")
@@ -249,6 +260,25 @@ public:
     // ========== 도시 유닛 구매 함수들 ==========
     UFUNCTION(BlueprintCallable, Category = "City Unit Purchase")
     bool PurchaseUnitWithGold(FName UnitName); // 골드로 유닛 구매
+
+    // ========== 국가 정보 함수들 ==========
+    UFUNCTION(BlueprintCallable, Category = "Player Info")
+    FString GetCountryName() const { return CountryName; }
+
+    UFUNCTION(BlueprintCallable, Category = "Player Info")
+    void SetCountryName(const FString& NewCountryName) { CountryName = NewCountryName; }
+
+    UFUNCTION(BlueprintCallable, Category = "Player Info")
+    UTexture2D* GetCountryLargeImg() const { return CountryLargeImg.LoadSynchronous(); }
+
+    UFUNCTION(BlueprintCallable, Category = "Player Info")
+    void SetCountryLargeImg(TSoftObjectPtr<UTexture2D> NewCountryLargeImg) { CountryLargeImg = NewCountryLargeImg; }
+
+    UFUNCTION(BlueprintCallable, Category = "Player Info")
+    UTexture2D* GetCountrySmallImg() const { return CountrySmallImg.LoadSynchronous(); }
+
+    UFUNCTION(BlueprintCallable, Category = "Player Info")
+    void SetCountrySmallImg(TSoftObjectPtr<UTexture2D> NewCountrySmallImg) { CountrySmallImg = NewCountrySmallImg; }
 
     // ========== 게임 상태 함수들 ==========
     UFUNCTION(BlueprintCallable, Category = "Game State")

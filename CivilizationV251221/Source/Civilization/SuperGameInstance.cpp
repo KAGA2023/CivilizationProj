@@ -3,6 +3,7 @@
 
 #include "SuperGameInstance.h"
 #include "Kismet/GameplayStatics.h"
+#include "Engine/DataTable.h"
 #include "World/WorldComponent.h"
 #include "Unit/UnitManager.h"
 #include "Facility/FacilityManager.h"
