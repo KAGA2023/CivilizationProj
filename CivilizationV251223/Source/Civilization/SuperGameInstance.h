@@ -113,6 +113,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Diplomacy Management") // 외교 매니저 정리 (메모리 해제)
 	void ClearDiplomacyManager();
 
+	// AI 플레이어 매니저 관리
+	UPROPERTY(BlueprintReadWrite, Category = "AI Player Management") // AI 플레이어 매니저
+	class UAIPlayerManager* AIPlayerManager = nullptr;
+
+	UFUNCTION(BlueprintCallable, Category = "AI Player Management") // AI 플레이어 매니저 설정
+	void SetAIPlayerManager(class UAIPlayerManager* InAIPlayerManager);
+
+	UFUNCTION(BlueprintCallable, Category = "AI Player Management") // AI 플레이어 매니저 가져오기
+	class UAIPlayerManager* GetAIPlayerManager() const { return AIPlayerManager; }
+
+	UFUNCTION(BlueprintCallable, Category = "AI Player Management") // AI 플레이어 매니저 정리 (메모리 해제)
+	void ClearAIPlayerManager();
+
 	// 플레이어 스테이트 관리
 	UPROPERTY(BlueprintReadWrite, Category = "Player Management") // 모든 플레이어 스테이트
 	TArray<class ASuperPlayerState*> PlayerStates;

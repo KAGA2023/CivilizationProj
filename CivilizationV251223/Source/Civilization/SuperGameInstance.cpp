@@ -10,6 +10,7 @@
 #include "Facility/FacilityManager.h"
 #include "Border/BorderManager.h"
 #include "Diplomacy/DiplomacyManager.h"
+#include "AIPlayer/AIPlayerManager.h"
 #include "SuperPlayerState.h"
 
 USuperGameInstance::USuperGameInstance()
@@ -137,6 +138,20 @@ void USuperGameInstance::ClearDiplomacyManager()
 	{
 		DiplomacyManager->MarkAsGarbage();
 		DiplomacyManager = nullptr;
+	}
+}
+
+void USuperGameInstance::SetAIPlayerManager(UAIPlayerManager* InAIPlayerManager)
+{
+	AIPlayerManager = InAIPlayerManager;
+}
+
+void USuperGameInstance::ClearAIPlayerManager()
+{
+	if (AIPlayerManager)
+	{
+		AIPlayerManager->MarkAsGarbage();
+		AIPlayerManager = nullptr;
 	}
 }
 

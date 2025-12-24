@@ -6,6 +6,7 @@
 #include "../Facility/FacilityManager.h"
 #include "../Border/BorderManager.h"
 #include "../Diplomacy/DiplomacyManager.h"
+#include "../AIPlayer/AIPlayerManager.h"
 #include "../City/CityActor.h"
 #include "../SuperPlayerState.h"
 #include "../City/CityComponent.h"
@@ -74,6 +75,13 @@ void AWorldSpawner::BeginPlay()
 						const int32 NumPlayers = SuperGameInst->GetPlayerStateCount();
 						DiplomacyManager->Initialize(NumPlayers);
 						SuperGameInst->SetDiplomacyManager(DiplomacyManager);
+					}
+
+					// AIPlayerManager 생성 및 설정
+					UAIPlayerManager* AIPlayerManager = NewObject<UAIPlayerManager>(this);
+					if (AIPlayerManager)
+					{
+						SuperGameInst->SetAIPlayerManager(AIPlayerManager);
 					}
 				}
 				
