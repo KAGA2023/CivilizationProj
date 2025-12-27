@@ -82,6 +82,7 @@ void AWorldSpawner::BeginPlay()
 					if (AIPlayerManager)
 					{
 						SuperGameInst->SetAIPlayerManager(AIPlayerManager);
+						// Initialize()는 AssignCitiesToPlayers()에서 호출됨 (PlayerState들이 준비된 후)
 					}
 				}
 				
@@ -368,6 +369,12 @@ void AWorldSpawner::AssignCitiesToPlayers()
 	if (UBorderManager* BorderManager = GameInstance->GetBorderManager())
 	{
 		BorderManager->UpdateAllBorders();
+	}
+	
+	// 도시 배정 완료 후 AIPlayerManager 초기화 (이 시점에 PlayerState들이 모두 준비됨)
+	if (UAIPlayerManager* AIPlayerManager = GameInstance->GetAIPlayerManager())
+	{
+		AIPlayerManager->Initialize();
 	}
 	
 	// 도시 배정 완료 후 카메라를 플레이어 0의 도시로 이동

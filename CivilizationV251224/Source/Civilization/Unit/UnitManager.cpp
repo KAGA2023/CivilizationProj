@@ -9,6 +9,7 @@
 #include "../SuperGameInstance.h"
 #include "../SuperPlayerState.h"
 #include "../AICon/UnitAIController.h"
+#include "../AIPlayer/AIPlayerManager.h"
 #include "Engine/Engine.h"
 
 UUnitManager::UUnitManager()
@@ -835,6 +836,22 @@ void UUnitManager::OnUnitMovementComplete(AUnitCharacterBase* Unit, FVector2D Fi
     
     // 선택 초기화
     ClearMoveSelection();
+    
+    // ========== AI 플레이어의 유닛이면 AIPlayerManager에 알림 ==========
+    int32 UnitPlayerIndex = Unit->GetPlayerIndex();
+    if (UnitPlayerIndex >= 1 && UnitPlayerIndex <= 3) // AI 플레이어 (1~3)
+    {
+        if (UWorld* World = GetWorld())
+        {
+            if (USuperGameInstance* GameInstance = Cast<USuperGameInstance>(World->GetGameInstance()))
+            {
+                if (UAIPlayerManager* AIPlayerManager = GameInstance->GetAIPlayerManager())
+                {
+                    AIPlayerManager->OnUnitMovementFinished(UnitPlayerIndex);
+                }
+            }
+        }
+    }
 }
 
 // 전투 유닛 판단 함수
@@ -1077,6 +1094,22 @@ void UUnitManager::OnCombatVisualizationComplete(AUnitCharacterBase* Attacker, A
     if (!CombatResult.bDefenderAlive && Defender)
     {
         DestroyUnit(Defender, DefenderHex);
+    }
+    
+    // ========== AI 플레이어의 유닛이면 AIPlayerManager에 알림 ==========
+    int32 AttackerPlayerIndex = Attacker->GetPlayerIndex();
+    if (AttackerPlayerIndex >= 1 && AttackerPlayerIndex <= 3) // AI 플레이어 (1~3)
+    {
+        if (UWorld* World = GetWorld())
+        {
+            if (USuperGameInstance* GameInstance = Cast<USuperGameInstance>(World->GetGameInstance()))
+            {
+                if (UAIPlayerManager* AIPlayerManager = GameInstance->GetAIPlayerManager())
+                {
+                    AIPlayerManager->OnCombatActionFinished(AttackerPlayerIndex);
+                }
+            }
+        }
     }
 }
 

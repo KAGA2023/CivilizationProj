@@ -61,4 +61,8 @@ protected:
 	// 라운드 변경 이벤트 핸들러
 	UFUNCTION()
 	void HandleRoundChanged(FTurnStruct NewTurn);
+	
+	// 턴 변경 이벤트 핸들러 (AI 턴 처리용)
+	UFUNCTION()
+	void HandleTurnChanged(FTurnStruct NewTurn);
 };

@@ -21,6 +21,15 @@ enum class EAITurnState : uint8
     TurnComplete                UMETA(DisplayName = "Turn Complete")                   // 턴 완료
 };
 
+UENUM(BlueprintType)
+enum class EAILastProductionType : uint8
+{
+    None                        UMETA(DisplayName = "None"),                          // 없음 (초기값)
+    Builder                     UMETA(DisplayName = "Builder"),                        // 건설자
+    Combat                      UMETA(DisplayName = "Combat"),                         // 병사
+    Building                    UMETA(DisplayName = "Building")                        // 건물
+};
+
 USTRUCT(BlueprintType)
 struct CIVILIZATION_API FAIPlayerStruct
 {
@@ -51,6 +60,14 @@ struct CIVILIZATION_API FAIPlayerStruct
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Async")
     int32 PendingCombatActions = 0; // 대기 중인 전투 액션 수
 
+    // ========== 생산 순서 추적 ==========
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Production Order")
+    EAILastProductionType LastProductionType = EAILastProductionType::None; // 마지막 생산 타입 (건설자 -> 병사 -> 건물 순서)
+
+    // ========== 시설 건설 목표 추적 ==========
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Facility")
+    FVector2D TargetFacilityTile = FVector2D(-1, -1); // 건설자가 이동할 목표 타일 위치 (-1, -1이면 미설정)
+
     // ========== 생성자 ==========
     FAIPlayerStruct()
     {
@@ -60,6 +77,38 @@ struct CIVILIZATION_API FAIPlayerStruct
         CurrentTurnRound = 0;
         PendingUnitMovements = 0;
         PendingCombatActions = 0;
+        LastProductionType = EAILastProductionType::None;
+        TargetFacilityTile = FVector2D(-1, -1);
+    }
+};
+
+// ========== 타일 구매 정렬용 구조체 ==========
+USTRUCT(BlueprintType)
+struct CIVILIZATION_API FTileWithTotalYield
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tile Purchase")
+    FVector2D Coordinate; // 타일 좌표
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tile Purchase")
+    int32 TotalYield = 0; // 생산량 + 식량 + 과학력 + 골드 총합
+
+    // ========== 생성자 ==========
+    FTileWithTotalYield()
+    {
+        Coordinate = FVector2D::ZeroVector;
+        TotalYield = 0;
+    }
+
+    FTileWithTotalYield(FVector2D InCoord, int32 InTotalYield)
+        : Coordinate(InCoord), TotalYield(InTotalYield)
+    {}
+
+    // ========== 정렬을 위한 비교 함수 ==========
+    static bool CompareDescending(const FTileWithTotalYield& A, const FTileWithTotalYield& B)
+    {
+        return A.TotalYield > B.TotalYield;
     }
 };
 

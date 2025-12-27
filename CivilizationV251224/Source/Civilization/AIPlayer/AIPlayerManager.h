@@ -55,11 +55,25 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AI Turn")
 	void EndAITurn(int32 PlayerIndex);
 
+	// ================= 비동기 작업 완료 콜백 =================
+
+	// 유닛 이동 완료 콜백 (UnitManager에서 호출)
+	UFUNCTION(BlueprintCallable, Category = "AI Async")
+	void OnUnitMovementFinished(int32 PlayerIndex);
+
+	// 전투 액션 완료 콜백 (UnitManager에서 호출)
+	UFUNCTION(BlueprintCallable, Category = "AI Async")
+	void OnCombatActionFinished(int32 PlayerIndex);
+
 	// ================= 상태머신 =================
 
 	// 상태머신 업데이트 (매 틱/프레임 또는 이벤트에서 호출)
 	UFUNCTION(BlueprintCallable, Category = "AI State Machine")
 	void UpdateStateMachine(int32 PlayerIndex);
+
+	// 비동기 작업 대기 중인지 확인
+	UFUNCTION(BlueprintCallable, Category = "AI State Machine")
+	bool HasPendingAsyncWork(int32 PlayerIndex) const;
 
 protected:
 	// ================= 상태 처리 함수들 (5단계에서 구현) =================
@@ -76,9 +90,6 @@ protected:
 
 	// 다음 상태로 전환
 	void TransitionToNextState(int32 PlayerIndex);
-
-	// 비동기 작업 대기 중인지 확인
-	bool HasPendingAsyncWork(int32 PlayerIndex) const;
 	// ================= 헬퍼 함수 =================
 
 	// AI 플레이어 가져오기 (포인터 반환)

@@ -7,6 +7,7 @@
 #include "Unit/UnitCharacterBase.h"
 #include "Status/UnitStatusComponent.h"
 #include "Diplomacy/DiplomacyManager.h"
+#include "AIPlayer/AIPlayerManager.h"
 
 ASuperGameModeBase::ASuperGameModeBase()
 {
@@ -33,6 +34,9 @@ void ASuperGameModeBase::BeginPlay()
 
 		// 라운드 변경 시 외교 매니저에 알림
 		TurnComponent->OnRoundChanged.AddDynamic(this, &ASuperGameModeBase::HandleRoundChanged);
+		
+		// 턴 변경 시 AI 턴 처리
+		TurnComponent->OnTurnChanged.AddDynamic(this, &ASuperGameModeBase::HandleTurnChanged);
 	}
 	
 	// 모든 플레이어 스테이트 생성 (Player 0 + AI 1~3, 총 4개)
@@ -109,8 +113,44 @@ void ASuperGameModeBase::NextTurn()
 
 	// 현재 플레이어의 턴 종료 처리
 	EndCurrentPlayerTurn();
+	
+	// 현재 플레이어가 AI인지 확인
+	int32 CurrentPlayerIndex = TurnComponent->GetCurrentPlayerIndex();
+	if (CurrentPlayerIndex >= 1 && CurrentPlayerIndex <= 3) // AI 플레이어
+	{
+		if (USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance()))
+		{
+			if (UAIPlayerManager* AIPlayerManager = GameInstance->GetAIPlayerManager())
+			{
+				// AI 턴이 완료되었는지 확인
+				if (AIPlayerManager->IsAITurnComplete(CurrentPlayerIndex))
+				{
+					// AI 턴 종료
+					AIPlayerManager->EndAITurn(CurrentPlayerIndex);
+					
+					// 다음 턴으로 진행
+					TurnComponent->NextTurn();
+					
+					// 게임 종료 조건 확인
+					CheckGameEndConditions();
+					return;
+				}
+				else
+				{
+					// AI 턴이 아직 완료되지 않았으면 상태 머신 업데이트
+					// (비동기 작업이 완료되어 다음 상태로 진행할 수 있는 경우)
+					if (!AIPlayerManager->HasPendingAsyncWork(CurrentPlayerIndex))
+					{
+						AIPlayerManager->UpdateStateMachine(CurrentPlayerIndex);
+					}
+					// 비동기 작업이 있으면 콜백에서 자동으로 UpdateStateMachine이 호출됨
+					return; // NextTurn()은 나중에 콜백에서 호출
+				}
+			}
+		}
+	}
 
-	// 다음 턴으로 진행
+	// 플레이어 턴이거나 AI 턴이 완료된 경우 다음 턴으로 진행
 	TurnComponent->NextTurn();
 
 	// 게임 종료 조건 확인
@@ -169,6 +209,30 @@ void ASuperGameModeBase::HandleRoundChanged(FTurnStruct NewTurn)
 		if (UDiplomacyManager* DiplomacyManager = GameInstance->GetDiplomacyManager())
 		{
 			DiplomacyManager->OnRoundStarted(NewTurn.RoundNumber);
+		}
+	}
+}
+
+void ASuperGameModeBase::HandleTurnChanged(FTurnStruct NewTurn)
+{
+	int32 CurrentPlayerIndex = NewTurn.PlayerIndex;
+	
+	// AI 플레이어인지 확인 (1~3)
+	if (CurrentPlayerIndex >= 1 && CurrentPlayerIndex <= 3)
+	{
+		if (USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance()))
+		{
+			if (UAIPlayerManager* AIPlayerManager = GameInstance->GetAIPlayerManager())
+			{
+				// AI 턴 시작
+				AIPlayerManager->StartAITurn(CurrentPlayerIndex);
+				
+				// 첫 상태 머신 업데이트 (비동기 작업이 없으면 즉시 진행)
+				if (!AIPlayerManager->HasPendingAsyncWork(CurrentPlayerIndex))
+				{
+					AIPlayerManager->UpdateStateMachine(CurrentPlayerIndex);
+				}
+			}
 		}
 	}
 }
