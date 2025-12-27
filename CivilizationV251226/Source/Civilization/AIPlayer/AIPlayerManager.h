@@ -97,5 +97,9 @@ protected:
 
 	// AI 플레이어 새 턴 초기화
 	void ResetAIPlayerForNewTurn(FAIPlayerStruct& AIPlayer);
+
+	// 도시 기준 반경 내 랜덤 배회 타일 가져오기
+	UFUNCTION(BlueprintCallable, Category = "AI Helper")
+	FVector2D GetRandomWanderTile(int32 PlayerIndex, int32 Radius = 4) const;
 };
 
