@@ -8,6 +8,11 @@
 #include "AIPlayerManager.generated.h"
 
 class ASuperPlayerState;
+class USuperGameInstance;
+class UWorldComponent;
+class UUnitManager;
+class UWorldTile;
+class AUnitCharacterBase;
 
 UCLASS(BlueprintType)
 class CIVILIZATION_API UAIPlayerManager : public UObject
@@ -92,14 +97,86 @@ protected:
 	void TransitionToNextState(int32 PlayerIndex);
 	// ================= 헬퍼 함수 =================
 
-	// AI 플레이어 가져오기 (포인터 반환)
+	// AI 플레이어 가져오기 (포인터 반환, 내부 사용)
 	FAIPlayerStruct* GetAIPlayerPtr(int32 PlayerIndex);
 
 	// AI 플레이어 새 턴 초기화
 	void ResetAIPlayerForNewTurn(FAIPlayerStruct& AIPlayer);
 
-	// 도시 기준 반경 내 랜덤 배회 타일 가져오기
-	UFUNCTION(BlueprintCallable, Category = "AI Helper")
-	FVector2D GetRandomWanderTile(int32 PlayerIndex, int32 Radius = 4) const;
+	// ================= 유닛 이동 처리 함수 =================
+	
+	// 건설자 유닛 이동 처리
+	// 목표 시설 타일로 이동하거나 도착 시 시설 건설 시도, 실패 시 랜덤 배회
+	void ProcessBuilderUnitMovement(
+		int32 PlayerIndex,
+		FAIPlayerStruct* AIPlayer,
+		ASuperPlayerState* PlayerState,
+		USuperGameInstance* GameInstance,
+		UWorldComponent* WorldComponent,
+		UUnitManager* UnitManager,
+		const TArray<UWorldTile*>& AllTiles,
+		FReservedTiles& ReservedTiles
+	);
+
+	// 병사 유닛 이동 처리 (평화 상태)
+	// 전쟁 중이 아닐 때만 병사 유닛을 배회시킴
+	void ProcessCombatUnitsMovement(
+		int32 PlayerIndex,
+		FAIPlayerStruct* AIPlayer,
+		ASuperPlayerState* PlayerState,
+		USuperGameInstance* GameInstance,
+		UWorldComponent* WorldComponent,
+		UUnitManager* UnitManager,
+		const TArray<UWorldTile*>& AllTiles,
+		const TArray<AUnitCharacterBase*>& AllUnits,
+		FReservedTiles& ReservedTiles
+	);
+
+	// ================= 유닛 이동 헬퍼 함수 =================
+
+	// 유닛의 현재 위치 찾기
+	// @param Unit 찾을 유닛
+	// @param UnitManager 유닛 매니저
+	// @param AllTiles 모든 타일 배열
+	// @param OutPosition 찾은 위치를 저장할 변수
+	// @return 위치를 찾았으면 true, 실패 시 false
+	bool FindUnitPosition(
+		AUnitCharacterBase* Unit,
+		UUnitManager* UnitManager,
+		const TArray<UWorldTile*>& AllTiles,
+		FVector2D& OutPosition
+	);
+
+	// 유닛을 목표 타일로 이동 시도
+	// 경로를 찾고 실제 도착 타일을 예약한 후 이동 시작
+	// @param Unit 이동할 유닛
+	// @param StartPosition 시작 위치
+	// @param TargetTile 목표 타일
+	// @param UnitManager 유닛 매니저
+	// @param ReservedTiles 예약된 타일 집합 (참조로 수정됨)
+	// @param OutPendingMovements 대기 중인 이동 수 (참조로 증가됨)
+	// @return 이동 시작 성공 시 true, 실패 시 false
+	bool TryMoveUnitToTile(
+		AUnitCharacterBase* Unit,
+		FVector2D StartPosition,
+		FVector2D TargetTile,
+		UUnitManager* UnitManager,
+		FReservedTiles& ReservedTiles,
+		int32& OutPendingMovements
+	);
+
+	// 예약되지 않은 배회 타일 찾기
+	// 여러 번 시도하여 예약되지 않은 유효한 배회 타일을 찾음
+	// @param PlayerIndex AI 플레이어 인덱스
+	// @param ReservedTiles 예약된 타일 집합
+	// @param Radius 도시 기준 반경 (기본값: 2)
+	// @param MaxAttempts 최대 시도 횟수 (기본값: 10)
+	// @return 유효한 배회 타일 좌표, 실패 시 FVector2D(-1, -1)
+	FVector2D FindValidWanderTile(
+		int32 PlayerIndex,
+		const FReservedTiles& ReservedTiles,
+		int32 Radius = 2,
+		int32 MaxAttempts = 10
+	);
 };
 

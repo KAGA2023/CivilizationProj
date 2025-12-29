@@ -1022,9 +1022,9 @@ void UAIPlayerManager::ProcessFacilityState(int32 PlayerIndex)
 
 	// 이미 목표 타일이 설정되어 있고, 그 타일에 시설이 건설되지 않았으면 갱신하지 않음
 	// TargetFacilityTile이 초기값(-1, -1)이 아닌지 확인 (헥스 좌표계에서는 음수 좌표가 정상이므로 초기값과 비교)
-	bool bTargetFacilityTileSet = (AIPlayer->TargetFacilityTile != FVector2D(-1, -1));
+	bool bHasTargetFacilityTile = (AIPlayer->TargetFacilityTile != FVector2D(-1, -1));
 	
-	if (bTargetFacilityTileSet)
+	if (bHasTargetFacilityTile)
 	{
 		// 목표 타일이 여전히 유효한지 확인 (시설이 건설되지 않았는지)
 		if (!FacilityManager->HasFacilityAtTile(AIPlayer->TargetFacilityTile))
@@ -1087,6 +1087,211 @@ void UAIPlayerManager::ProcessFacilityState(int32 PlayerIndex)
 	TransitionToNextState(PlayerIndex);
 }
 
+void UAIPlayerManager::ProcessBuilderUnitMovement(
+	int32 PlayerIndex,
+	FAIPlayerStruct* AIPlayer,
+	ASuperPlayerState* PlayerState,
+	USuperGameInstance* GameInstance,
+	UWorldComponent* WorldComponent,
+	UUnitManager* UnitManager,
+	const TArray<UWorldTile*>& AllTiles,
+	FReservedTiles& ReservedTiles
+)
+{
+	// ========== 건설자 유닛 찾기 ==========
+	TArray<AUnitCharacterBase*> AllUnits = UnitManager->GetAllUnits();
+	AUnitCharacterBase* BuilderUnit = nullptr;
+	for (AUnitCharacterBase* Unit : AllUnits)
+	{
+		if (Unit && Unit->GetPlayerIndex() == PlayerIndex && UnitManager->IsBuilderUnit(Unit))
+		{
+			BuilderUnit = Unit;
+			break;
+		}
+	}
+
+	if (!BuilderUnit)
+	{
+		return;
+	}
+
+	// ========== 건설자 위치 확인 ==========
+	FVector2D BuilderPosition = FVector2D(-1, -1);
+	if (!FindUnitPosition(BuilderUnit, UnitManager, AllTiles, BuilderPosition))
+	{
+		return;
+	}
+
+	// ========== 목표 시설 타일 확인 ==========
+	// 주의: 헥스 좌표계에서는 음수 좌표가 정상이므로, 초기값(-1, -1)과 비교하여 확인
+	bool bHasTargetFacilityTile = (AIPlayer->TargetFacilityTile != FVector2D(-1, -1));
+	if (!bHasTargetFacilityTile)
+	{
+		return;
+	}
+
+	// ========== 시설 건설 처리 ==========
+	// 건설자가 목표 타일에 도착한 경우
+	if (BuilderPosition == AIPlayer->TargetFacilityTile)
+	{
+		// 필요한 매니저 및 컴포넌트 가져오기
+		UFacilityManager* FacilityManager = GameInstance->GetFacilityManager();
+		if (!FacilityManager || !PlayerState)
+		{
+			AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
+			return;
+		}
+
+		// 목표 타일 가져오기
+		UWorldTile* TargetTile = WorldComponent->GetTileAtHex(AIPlayer->TargetFacilityTile);
+		if (!TargetTile)
+		{
+			AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
+			return;
+		}
+
+		// 기술 조건 필터링: 건설 가능한 시설 목록 가져오기
+		TArray<FName> AvailableFacilities = PlayerState->GetAvailableFacilities();
+		if (AvailableFacilities.Num() == 0)
+		{
+			AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
+			return;
+		}
+
+		// 타일 조건 필터링: CanBuildFacilityOnTile()로 건설 가능한 시설 찾기
+		TArray<FName> BuildableFacilities;
+		for (const FName& FacilityRowName : AvailableFacilities)
+		{
+			if (FacilityManager->CanBuildFacilityOnTile(FacilityRowName, TargetTile))
+			{
+				BuildableFacilities.Add(FacilityRowName);
+			}
+		}
+
+		if (BuildableFacilities.Num() == 0)
+		{
+			AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
+			return;
+		}
+
+		// 건설 가능한 시설 중 랜덤 선택
+		int32 RandomIndex = FMath::RandRange(0, BuildableFacilities.Num() - 1);
+		FName SelectedFacilityRowName = BuildableFacilities[RandomIndex];
+
+		// 시설 건설 시도 (성공/실패와 관계없이 목표 타일 초기화)
+		PlayerState->BuildFacility(SelectedFacilityRowName, AIPlayer->TargetFacilityTile);
+		AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
+		return;
+	}
+
+	// ========== 건설자 이동 처리 ==========
+	// 이동 불가능한 경우 랜덤 배회
+	if (!BuilderUnit->GetUnitStatusComponent()->CanMove())
+	{
+		FVector2D WanderTargetTile = FindValidWanderTile(PlayerIndex, ReservedTiles, 2, 10);
+		if (WanderTargetTile != FVector2D(-1, -1))
+		{
+			TryMoveUnitToTile(BuilderUnit, BuilderPosition, WanderTargetTile, UnitManager, ReservedTiles, AIPlayer->PendingUnitMovements);
+		}
+
+		AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
+		return;
+	}
+
+	// 이동 가능한 경우 목표 타일로 이동 시도
+	// 목표 타일을 임시로 예약 (경로를 찾기 전에)
+	// 경로를 찾은 후에는 실제 도착 타일로 업데이트됨
+	ReservedTiles.Add(AIPlayer->TargetFacilityTile);
+
+	if (TryMoveUnitToTile(BuilderUnit, BuilderPosition, AIPlayer->TargetFacilityTile, UnitManager, ReservedTiles, AIPlayer->PendingUnitMovements))
+	{
+		return;
+	}
+
+	// 경로가 없으면 예약 해제하고 랜덤 배회
+	ReservedTiles.Remove(AIPlayer->TargetFacilityTile);
+	
+	FVector2D WanderTargetTile = FindValidWanderTile(PlayerIndex, ReservedTiles, 2, 10);
+	if (WanderTargetTile != FVector2D(-1, -1))
+	{
+		TryMoveUnitToTile(BuilderUnit, BuilderPosition, WanderTargetTile, UnitManager, ReservedTiles, AIPlayer->PendingUnitMovements);
+	}
+
+	AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
+}
+
+void UAIPlayerManager::ProcessCombatUnitsMovement(
+	int32 PlayerIndex,
+	FAIPlayerStruct* AIPlayer,
+	ASuperPlayerState* PlayerState,
+	USuperGameInstance* GameInstance,
+	UWorldComponent* WorldComponent,
+	UUnitManager* UnitManager,
+	const TArray<UWorldTile*>& AllTiles,
+	const TArray<AUnitCharacterBase*>& AllUnits,
+	FReservedTiles& ReservedTiles
+)
+{
+	// ========== 전쟁 상태 확인 ==========
+	UDiplomacyManager* DiplomacyManager = GameInstance->GetDiplomacyManager();
+	bool bIsAtWar = false;
+	if (DiplomacyManager)
+	{
+		// 모든 다른 플레이어 확인 (0, 1, 2, 3 중 PlayerIndex가 아닌 것들)
+		for (int32 OtherPlayerIndex = 0; OtherPlayerIndex < 4; OtherPlayerIndex++)
+		{
+			if (OtherPlayerIndex != PlayerIndex && 
+				DiplomacyManager->IsAtWar(PlayerIndex, OtherPlayerIndex))
+			{
+				bIsAtWar = true;
+				break;
+			}
+		}
+	}
+
+	// 전쟁 중이면 병사 유닛 배회하지 않음
+	if (bIsAtWar)
+	{
+		return;
+	}
+
+	// ========== 병사 유닛 찾기 ==========
+	TArray<AUnitCharacterBase*> CombatUnits;
+	for (AUnitCharacterBase* Unit : AllUnits)
+	{
+		if (Unit && 
+			Unit->GetPlayerIndex() == PlayerIndex && 
+			UnitManager->IsCombatUnit(Unit))
+		{
+			CombatUnits.Add(Unit);
+		}
+	}
+
+	// ========== 각 병사 유닛 처리 ==========
+	for (AUnitCharacterBase* CombatUnit : CombatUnits)
+	{
+		// 현재 위치 확인
+		FVector2D CombatUnitPosition = FVector2D(-1, -1);
+		if (!FindUnitPosition(CombatUnit, UnitManager, AllTiles, CombatUnitPosition))
+		{
+			continue;
+		}
+
+		// 이동 가능 여부 확인
+		if (!CombatUnit->GetUnitStatusComponent()->CanMove())
+		{
+			continue;
+		}
+
+		// 랜덤 배회 타일 선택
+		FVector2D WanderTargetTile = FindValidWanderTile(PlayerIndex, ReservedTiles, 2, 10);
+		if (WanderTargetTile != FVector2D(-1, -1))
+		{
+			TryMoveUnitToTile(CombatUnit, CombatUnitPosition, WanderTargetTile, UnitManager, ReservedTiles, AIPlayer->PendingUnitMovements);
+		}
+	}
+}
+
 void UAIPlayerManager::ProcessUnitMovementState(int32 PlayerIndex)
 {
 	FAIPlayerStruct* AIPlayer = GetAIPlayerPtr(PlayerIndex);
@@ -1132,29 +1337,66 @@ void UAIPlayerManager::ProcessUnitMovementState(int32 PlayerIndex)
 		return;
 	}
 
-	// 1. 건설자 유닛 찾기
+	// 공통 데이터 준비
+	TArray<UWorldTile*> AllTiles = WorldComponent->GetAllTiles();
 	TArray<AUnitCharacterBase*> AllUnits = UnitManager->GetAllUnits();
-	AUnitCharacterBase* BuilderUnit = nullptr;
-	for (AUnitCharacterBase* Unit : AllUnits)
-	{
-		if (Unit && Unit->GetPlayerIndex() == PlayerIndex && UnitManager->IsBuilderUnit(Unit))
-		{
-			BuilderUnit = Unit;
-			break;
-		}
-	}
+	
+	// 예약된 타일 추적 시스템
+	// 이미 이동을 시작한 유닛들의 목표 타일(실제 도착 타일)을 추적하여 중복 이동 방지
+	FReservedTiles ReservedTiles;
 
-	// 건설자가 없으면 다음 상태로 전환
-	if (!BuilderUnit)
+	// 건설자 유닛 이동 처리
+	ProcessBuilderUnitMovement(
+		PlayerIndex,
+		AIPlayer,
+		PlayerState,
+		GameInstance,
+		WorldComponent,
+		UnitManager,
+		AllTiles,
+		ReservedTiles
+	);
+
+	// 병사 유닛 이동 처리
+	ProcessCombatUnitsMovement(
+		PlayerIndex,
+		AIPlayer,
+		PlayerState,
+		GameInstance,
+		WorldComponent,
+		UnitManager,
+		AllTiles,
+		AllUnits,
+		ReservedTiles
+	);
+
+	// 모든 처리 완료
+	// 이동을 시작한 유닛이 있으면 WaitingForAsync로 전환, 없으면 다음 상태로
+	if (AIPlayer->PendingUnitMovements > 0)
+	{
+		AIPlayer->CurrentState = EAITurnState::WaitingForAsync;
+	}
+	else
 	{
 		TransitionToNextState(PlayerIndex);
-		return;
+	}
+}
+
+// ================= 유닛 이동 헬퍼 함수 구현 =================
+
+bool UAIPlayerManager::FindUnitPosition(
+	AUnitCharacterBase* Unit,
+	UUnitManager* UnitManager,
+	const TArray<UWorldTile*>& AllTiles,
+	FVector2D& OutPosition
+)
+{
+	if (!Unit || !UnitManager)
+	{
+		return false;
 	}
 
-	// 건설자의 현재 위치 찾기 (모든 타일을 순회하면서 확인)
-	FVector2D BuilderPosition = FVector2D(-1, -1);
-	bool bBuilderPositionFound = false;
-	TArray<UWorldTile*> AllTiles = WorldComponent->GetAllTiles();
+	// 모든 타일을 순회하면서 유닛 위치 찾기
 	for (UWorldTile* Tile : AllTiles)
 	{
 		if (!Tile)
@@ -1162,173 +1404,74 @@ void UAIPlayerManager::ProcessUnitMovementState(int32 PlayerIndex)
 			continue;
 		}
 		FVector2D TileCoord = Tile->GetGridPosition();
-		if (UnitManager->GetUnitAtHex(TileCoord) == BuilderUnit)
+		if (UnitManager->GetUnitAtHex(TileCoord) == Unit)
 		{
-			BuilderPosition = TileCoord;
-			bBuilderPositionFound = true;
-			break;
+			OutPosition = TileCoord;
+			return true;
 		}
 	}
 
-	if (!bBuilderPositionFound)
-	{
-		TransitionToNextState(PlayerIndex);
-		return;
-	}
-
-	// 2. TargetFacilityTile 확인
-	// TargetFacilityTile이 초기값(-1, -1)이 아닌지 확인 (헥스 좌표계에서는 음수 좌표가 정상이므로 초기값과 비교)
-	bool bTargetFacilityTileSet = (AIPlayer->TargetFacilityTile != FVector2D(-1, -1));
-	
-	if (bTargetFacilityTileSet)
-	{
-		
-		// 건설자가 TargetFacilityTile에 도달했는지 확인
-		if (BuilderPosition == AIPlayer->TargetFacilityTile)
-		{
-			// 도착했으면 시설 건설 시도
-			// 1. 필요한 매니저 및 컴포넌트 가져오기
-			UFacilityManager* FacilityManager = GameInstance->GetFacilityManager();
-
-			if (!FacilityManager || !PlayerState)
-			{
-				AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
-				TransitionToNextState(PlayerIndex);
-				return;
-			}
-
-			// 2. 목표 타일 가져오기
-			UWorldTile* TargetTile = WorldComponent->GetTileAtHex(AIPlayer->TargetFacilityTile);
-			if (!TargetTile)
-			{
-				AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
-				TransitionToNextState(PlayerIndex);
-				return;
-			}
-
-			// 3. 기술 조건 필터링: 건설 가능한 시설 목록 가져오기
-			TArray<FName> AvailableFacilities = PlayerState->GetAvailableFacilities();
-			if (AvailableFacilities.Num() == 0)
-			{
-				// 건설 가능한 시설이 없으면 초기화하고 다음 상태로
-				AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
-				TransitionToNextState(PlayerIndex);
-				return;
-			}
-
-			// 4. 타일 조건 필터링: CanBuildFacilityOnTile()로 건설 가능한 시설 찾기
-			TArray<FName> BuildableFacilities;
-			for (const FName& FacilityRowName : AvailableFacilities)
-			{
-				if (FacilityManager->CanBuildFacilityOnTile(FacilityRowName, TargetTile))
-				{
-					BuildableFacilities.Add(FacilityRowName);
-				}
-			}
-
-			// 5. 건설 가능한 시설이 없으면 초기화하고 다음 상태로
-			if (BuildableFacilities.Num() == 0)
-			{
-				AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
-				TransitionToNextState(PlayerIndex);
-				return;
-			}
-
-			// 6. 건설 가능한 시설 중 랜덤 선택
-			int32 RandomIndex = FMath::RandRange(0, BuildableFacilities.Num() - 1);
-			FName SelectedFacilityRowName = BuildableFacilities[RandomIndex];
-
-			// 7. 시설 건설 시도
-			bool bBuildSuccess = PlayerState->BuildFacility(SelectedFacilityRowName, AIPlayer->TargetFacilityTile);
-
-			// 8. 성공/실패와 관계없이 TargetFacilityTile 초기화
-			AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
-			TransitionToNextState(PlayerIndex);
-			return;
-		}
-
-		// 건설자 이동 가능 여부 확인
-		if (!BuilderUnit->GetUnitStatusComponent()->CanMove())
-		{
-			// 이동 불가능하면 랜덤 배회하고 TargetFacilityTile 초기화
-			FVector2D WanderTile = GetRandomWanderTile(PlayerIndex, 4);
-			if (WanderTile.X >= 0 && WanderTile.Y >= 0)
-			{
-				// 배회할 타일로 경로 찾기
-				int32 MaxMovementCost = UnitManager->GetUnitRemainingMovement(BuilderUnit);
-				TArray<FVector2D> Path = UnitManager->FindPathWithMovementCost(
-					BuilderPosition,
-					WanderTile,
-					MaxMovementCost
-				);
-
-				// 경로가 있으면 이동 시작
-				if (Path.Num() > 1)
-				{
-					UnitManager->StartVisualMovement(BuilderUnit, Path);
-					AIPlayer->PendingUnitMovements++;
-					AIPlayer->CurrentState = EAITurnState::WaitingForAsync;
-				}
-			}
-
-			// TargetFacilityTile 초기화
-			AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
-			return;
-		}
-
-		// 이동 가능하면 TargetFacilityTile로 이동
-		// 건설자의 남은 이동력 가져오기
-		int32 MaxMovementCost = UnitManager->GetUnitRemainingMovement(BuilderUnit);
-
-		// 경로 찾기
-		TArray<FVector2D> Path = UnitManager->FindPathWithMovementCost(
-			BuilderPosition,
-			AIPlayer->TargetFacilityTile,
-			MaxMovementCost
-		);
-
-		// 경로가 있으면 이동 시작
-		if (Path.Num() > 1)
-		{
-			UnitManager->StartVisualMovement(BuilderUnit, Path);
-			AIPlayer->PendingUnitMovements++;
-			AIPlayer->CurrentState = EAITurnState::WaitingForAsync;
-		}
-		else
-		{
-			// 경로가 없으면 랜덤 배회하고 TargetFacilityTile 초기화
-			FVector2D WanderTile = GetRandomWanderTile(PlayerIndex, 4);
-			if (WanderTile.X >= 0 && WanderTile.Y >= 0)
-			{
-				// 배회할 타일로 경로 찾기
-				TArray<FVector2D> WanderPath = UnitManager->FindPathWithMovementCost(
-					BuilderPosition,
-					WanderTile,
-					MaxMovementCost
-				);
-
-				// 경로가 있으면 이동 시작
-				if (WanderPath.Num() > 1)
-				{
-					UnitManager->StartVisualMovement(BuilderUnit, WanderPath);
-					AIPlayer->PendingUnitMovements++;
-					AIPlayer->CurrentState = EAITurnState::WaitingForAsync;
-				}
-			}
-
-			// TargetFacilityTile 초기화
-			AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
-		}
-	}
-	else
-	{
-		// TargetFacilityTile이 없으면 다음 상태로 전환
-		TransitionToNextState(PlayerIndex);
-	}
+	return false;
 }
 
-FVector2D UAIPlayerManager::GetRandomWanderTile(int32 PlayerIndex, int32 Radius) const
+bool UAIPlayerManager::TryMoveUnitToTile(
+	AUnitCharacterBase* Unit,
+	FVector2D StartPosition,
+	FVector2D TargetTile,
+	UUnitManager* UnitManager,
+	FReservedTiles& ReservedTiles,
+	int32& OutPendingMovements
+)
 {
+	if (!Unit || !UnitManager)
+	{
+		return false;
+	}
+
+	// 유닛의 남은 이동력 가져오기
+	int32 MaxMovementCost = UnitManager->GetUnitRemainingMovement(Unit);
+
+	// 경로 찾기
+	TArray<FVector2D> Path = UnitManager->FindPathWithMovementCost(
+		StartPosition,
+		TargetTile,
+		MaxMovementCost
+	);
+
+	// 경로가 있으면 이동 시작
+	if (Path.Num() > 1)
+	{
+		// 실제 도착 타일 (경로의 마지막 타일 = 실제 도착 타일)
+		// 이동력 부족으로 경로가 잘렸을 경우를 대비하여 실제 도착 타일을 사용
+		FVector2D DestinationTile = Path[Path.Num() - 1];
+		
+		// 원래 목표 타일과 실제 도착 타일이 다르면 예약 업데이트
+		if (DestinationTile != TargetTile)
+		{
+			ReservedTiles.Remove(TargetTile);
+		}
+		
+		// 실제 도착 타일 예약
+		ReservedTiles.Add(DestinationTile);
+		
+		// 이동 시작
+		UnitManager->StartVisualMovement(Unit, Path);
+		OutPendingMovements++;
+		
+		return true;
+	}
+
+	return false;
+}
+
+FVector2D UAIPlayerManager::FindValidWanderTile(
+	int32 PlayerIndex,
+	const FReservedTiles& ReservedTiles,
+	int32 Radius,
+	int32 MaxAttempts
+)
+{
+	// ========== 초기 설정 (한 번만 수행) ==========
 	// AI 플레이어 가져오기
 	const FAIPlayerStruct* AIPlayer = AIPlayers.Find(PlayerIndex);
 	if (!AIPlayer || !AIPlayer->PlayerStateRef.IsValid())
@@ -1344,35 +1487,49 @@ FVector2D UAIPlayerManager::GetRandomWanderTile(int32 PlayerIndex, int32 Radius)
 
 	// WorldComponent 가져오기
 	UWorldComponent* WorldComponent = nullptr;
+	USuperGameInstance* GameInstance = nullptr;
 	if (UWorld* World = GetWorld())
 	{
-		if (USuperGameInstance* GameInstance = Cast<USuperGameInstance>(World->GetGameInstance()))
+		GameInstance = Cast<USuperGameInstance>(World->GetGameInstance());
+		if (GameInstance)
 		{
 			WorldComponent = GameInstance->GetGeneratedWorldComponent();
 		}
 	}
 
-	if (!WorldComponent)
+	if (!WorldComponent || !GameInstance)
 	{
 		return FVector2D(-1, -1);
 	}
 
-	// 도시 좌표 가져오기
-	FVector2D CityCoordinate = PlayerState->GetCityCoordinate();
-	if (CityCoordinate.X < 0 || CityCoordinate.Y < 0)
+	// 내가 소유한 모든 타일 가져오기
+	TArray<UWorldTile*> OwnedTiles = PlayerState->GetOwnedTiles(WorldComponent);
+	if (OwnedTiles.Num() == 0)
 	{
 		return FVector2D(-1, -1);
 	}
 
-	// 도시 기준 반경 내 타일 좌표들 가져오기
-	TArray<FVector2D> HexesInRadius = WorldComponent->GetHexesInRadius(CityCoordinate, Radius);
-
-	// GameInstance 가져오기 (다른 플레이어 소유 타일 확인용)
-	USuperGameInstance* GameInstance = nullptr;
-	if (UWorld* World = GetWorld())
+	// 각 소유 타일 기준으로 반경 내 타일 수집 (중복 제거를 위해 TSet 사용)
+	TSet<FVector2D> HexesInRadiusSet;
+	for (UWorldTile* OwnedTile : OwnedTiles)
 	{
-		GameInstance = Cast<USuperGameInstance>(World->GetGameInstance());
+		if (!OwnedTile)
+		{
+			continue;
+		}
+
+		FVector2D OwnedTileCoord = OwnedTile->GetGridPosition();
+		TArray<FVector2D> HexesAroundOwnedTile = WorldComponent->GetHexesInRadius(OwnedTileCoord, Radius);
+
+		// TSet에 추가하여 자동으로 중복 제거
+		for (const FVector2D& HexCoord : HexesAroundOwnedTile)
+		{
+			HexesInRadiusSet.Add(HexCoord);
+		}
 	}
+
+	// TSet을 TArray로 변환
+	TArray<FVector2D> HexesInRadius = HexesInRadiusSet.Array();
 
 	// 바다 타일 및 다른 플레이어 소유 타일 제외하고 유효한 타일만 필터링
 	TArray<FVector2D> ValidTiles;
@@ -1388,22 +1545,19 @@ FVector2D UAIPlayerManager::GetRandomWanderTile(int32 PlayerIndex, int32 Radius)
 
 			// 다른 플레이어가 소유한 타일인지 확인
 			bool bIsOwnedByOtherPlayer = false;
-			if (GameInstance)
+			for (int32 i = 0; i < GameInstance->GetPlayerStateCount(); i++)
 			{
-				for (int32 i = 0; i < GameInstance->GetPlayerStateCount(); i++)
+				if (i == PlayerIndex)
 				{
-					if (i == PlayerIndex)
-					{
-						continue; // 현재 플레이어는 건너뛰기
-					}
+					continue; // 현재 플레이어는 건너뛰기
+				}
 
-					if (ASuperPlayerState* OtherPlayerState = GameInstance->GetPlayerState(i))
+				if (ASuperPlayerState* OtherPlayerState = GameInstance->GetPlayerState(i))
+				{
+					if (OtherPlayerState->IsTileOwned(HexCoord))
 					{
-						if (OtherPlayerState->IsTileOwned(HexCoord))
-						{
-							bIsOwnedByOtherPlayer = true;
-							break;
-						}
+						bIsOwnedByOtherPlayer = true;
+						break;
 					}
 				}
 			}
@@ -1422,8 +1576,22 @@ FVector2D UAIPlayerManager::GetRandomWanderTile(int32 PlayerIndex, int32 Radius)
 		return FVector2D(-1, -1);
 	}
 
-	// 랜덤으로 타일 선택
-	int32 RandomIndex = FMath::RandRange(0, ValidTiles.Num() - 1);
-	return ValidTiles[RandomIndex];
+	// ========== 예약되지 않은 타일 찾기 (반복 시도) ==========
+	// 최대 시도 횟수(MaxAttempts)만큼 반복하여 예약되지 않은 배회 타일 찾기
+	for (int32 Attempt = 0; Attempt < MaxAttempts; Attempt++)
+	{
+		// 유효한 타일 중 랜덤 선택
+		int32 RandomIndex = FMath::RandRange(0, ValidTiles.Num() - 1);
+		FVector2D CandidateTile = ValidTiles[RandomIndex];
+		
+		// 예약되지 않은 타일이면 반환
+		if (!ReservedTiles.Contains(CandidateTile))
+		{
+			return CandidateTile;
+		}
+	}
+
+	// 모든 시도 실패 시 무효 좌표 반환
+	return FVector2D(-1, -1);
 }
 

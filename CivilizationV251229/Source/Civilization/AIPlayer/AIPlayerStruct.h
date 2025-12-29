@@ -112,3 +112,40 @@ struct CIVILIZATION_API FTileWithTotalYield
     }
 };
 
+// ========== 예약된 타일 추적 구조체 ==========
+USTRUCT(BlueprintType)
+struct CIVILIZATION_API FReservedTiles
+{
+    GENERATED_BODY()
+
+    // 실제 예약된 타일 집합
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Reserved Tiles")
+    TSet<FVector2D> ReservedTileSet;
+
+    // ========== 생성자 ==========
+    FReservedTiles()
+    {
+        ReservedTileSet.Empty();
+    }
+
+    // ========== 타일 예약 관리 함수 ==========
+
+    // 타일 예약 추가
+    void Add(const FVector2D& Tile);
+
+    // 타일 예약 제거
+    void Remove(const FVector2D& Tile);
+
+    // 타일 예약 여부 확인
+    bool Contains(const FVector2D& Tile) const;
+
+    // 예약된 타일 수 반환
+    int32 Num() const;
+
+    // 모든 예약 해제
+    void Clear();
+
+    // 예약된 타일이 없으면 true
+    bool IsEmpty() const;
+};
+
