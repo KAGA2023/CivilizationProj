@@ -18,7 +18,7 @@ void UTurnComponent::NextTurn()
 {
 	int32 PreviousRoundNumber = CurrentTurn.RoundNumber;
 
-	// 현재 턴이 1~3이면 다음 턴으로
+	// 현재 턴이 0~3이면 다음 턴으로
 	if (CurrentTurn.TurnNumber < 4)
 	{
 		CurrentTurn.TurnNumber++;

@@ -113,9 +113,18 @@ void ASuperGameModeBase::NextTurn()
 
 	// 현재 플레이어의 턴 종료 처리
 	EndCurrentPlayerTurn();
+
+	// 현재 플레이어가 플레이어0
+	int32 CurrentPlayerIndex = TurnComponent->GetCurrentPlayerIndex();
+	if (CurrentPlayerIndex == 0) {
+		TurnComponent->NextTurn();
+
+		// 게임 종료 조건 확인
+		CheckGameEndConditions();
+		return;
+	}
 	
 	// 현재 플레이어가 AI인지 확인
-	int32 CurrentPlayerIndex = TurnComponent->GetCurrentPlayerIndex();
 	if (CurrentPlayerIndex >= 1 && CurrentPlayerIndex <= 3) // AI 플레이어
 	{
 		if (USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance()))
@@ -151,10 +160,10 @@ void ASuperGameModeBase::NextTurn()
 	}
 
 	// 플레이어 턴이거나 AI 턴이 완료된 경우 다음 턴으로 진행
-	TurnComponent->NextTurn();
+	/*TurnComponent->NextTurn();*/
 
 	// 게임 종료 조건 확인
-	CheckGameEndConditions();
+	/*CheckGameEndConditions();*/
 }
 
 void ASuperGameModeBase::EndCurrentPlayerTurn()
@@ -190,6 +199,34 @@ void ASuperGameModeBase::EndCurrentPlayerTurn()
 			}
 		}
 	}
+}
+
+void ASuperGameModeBase::RequestEndPlayerTurn()
+{
+	if (!bIsGameActive || bIsGamePaused || !TurnComponent)
+	{
+		return;
+	}
+
+	// 현재 플레이어가 플레이어 0인지 확인
+	int32 CurrentPlayerIndex = TurnComponent->GetCurrentPlayerIndex();
+	if (CurrentPlayerIndex != 0)
+	{
+		// 플레이어 0의 턴이 아니면 무시
+		return;
+	}
+
+	// 플레이어 0의 턴 종료 처리
+	EndCurrentPlayerTurn();
+
+	// 다음 턴으로 진행 (Player 1로 자동 전환)
+	TurnComponent->NextTurn();
+
+	// 게임 종료 조건 확인
+	CheckGameEndConditions();
+	
+	// 이후 자동으로 HandleTurnChanged가 호출되어 AI 턴이 처리됨
+	// Player 1 → Player 2 → Player 3 → Player 0 순서로 진행
 }
 
 void ASuperGameModeBase::CheckGameEndConditions()

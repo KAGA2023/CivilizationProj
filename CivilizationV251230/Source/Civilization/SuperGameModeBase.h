@@ -36,10 +36,14 @@ public:
 	UTurnComponent* GetTurnComponent() const { return TurnComponent; }
 
 	UFUNCTION(BlueprintCallable, Category = "Turn Management")
-	void NextTurn(); // 다음 턴으로 진행합니다
+	void NextTurn(); // 다음 턴으로 진행합니다(AI 턴 처리용)
 
 	UFUNCTION(BlueprintCallable, Category = "Turn Management")
 	void EndCurrentPlayerTurn(); // 현재 플레이어의 턴을 종료합니다
+
+	// 플레이어 0의 턴 종료 요청 (UI에서 호출)
+	UFUNCTION(BlueprintCallable, Category = "Turn Management")
+	void RequestEndPlayerTurn(); // 플레이어 0의 턴을 종료하고 다음 턴으로 진행합니다(UI에서 호출)
 
 protected:
 	// 게임 상태 변수들

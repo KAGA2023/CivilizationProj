@@ -13,6 +13,7 @@ class UWorldComponent;
 class UUnitManager;
 class UWorldTile;
 class AUnitCharacterBase;
+class UDiplomacyManager;
 
 UCLASS(BlueprintType)
 class CIVILIZATION_API UAIPlayerManager : public UObject
@@ -177,6 +178,63 @@ protected:
 		const FReservedTiles& ReservedTiles,
 		int32 Radius = 2,
 		int32 MaxAttempts = 10
+	);
+
+	// ================= 전쟁 상태 헬퍼 함수 =================
+
+	// 4칸 반경 내 적 유닛 탐지 (거리 가까운 순 정렬)
+	// @param CombatUnitPosition 병사 유닛의 현재 위치
+	// @param DetectionRange 탐지 범위 (기본값: 4)
+	// @param PlayerIndex 현재 AI 플레이어 인덱스
+	// @param UnitManager 유닛 매니저
+	// @param WorldComponent 월드 컴포넌트
+	// @param DiplomacyManager 외교 매니저
+	// @return 적 유닛 배열 (거리 가까운 순 정렬), 없으면 빈 배열
+	TArray<AUnitCharacterBase*> FindEnemyUnitsInRange(
+		FVector2D CombatUnitPosition,
+		int32 DetectionRange,
+		int32 PlayerIndex,
+		UUnitManager* UnitManager,
+		UWorldComponent* WorldComponent,
+		UDiplomacyManager* DiplomacyManager
+	);
+
+	// 가장 가까운 적 도시 찾기
+	// @param PlayerIndex 현재 AI 플레이어 인덱스
+	// @param PlayerState 현재 플레이어 상태
+	// @param GameInstance 게임 인스턴스
+	// @param WorldComponent 월드 컴포넌트
+	// @param DiplomacyManager 외교 매니저
+	// @return 가장 가까운 적 도시 좌표, 없으면 FVector2D(-1, -1)
+	FVector2D FindClosestEnemyCity(
+		int32 PlayerIndex,
+		ASuperPlayerState* PlayerState,
+		USuperGameInstance* GameInstance,
+		UWorldComponent* WorldComponent,
+		UDiplomacyManager* DiplomacyManager
+	);
+
+	// 적 유닛으로 이동 및 공격 시도
+	// @param CombatUnit 병사 유닛
+	// @param CombatUnitPosition 병사 유닛의 현재 위치
+	// @param EnemyUnit 적 유닛
+	// @param EnemyPosition 적 유닛의 위치
+	// @param UnitManager 유닛 매니저
+	// @param WorldComponent 월드 컴포넌트
+	// @param ReservedTiles 예약된 타일 집합 (참조로 수정됨)
+	// @param OutPendingMovements 대기 중인 이동 수 (참조로 증가됨)
+	// @param OutPendingCombatActions 대기 중인 전투 액션 수 (참조로 증가됨)
+	// @return 성공 시 true, 실패 시 false
+	bool TryMoveAndAttackEnemy(
+		AUnitCharacterBase* CombatUnit,
+		FVector2D CombatUnitPosition,
+		AUnitCharacterBase* EnemyUnit,
+		FVector2D EnemyPosition,
+		UUnitManager* UnitManager,
+		UWorldComponent* WorldComponent,
+		FReservedTiles& ReservedTiles,
+		int32& OutPendingMovements,
+		int32& OutPendingCombatActions
 	);
 };
 
