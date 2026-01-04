@@ -1055,24 +1055,42 @@ void UUnitManager::ExecuteCombatBetweenSelectedUnits()
     OnCombatExecuted.Broadcast();
     
     // 공격자의 AIController 가져오기
-    AUnitAIController* AIController = Cast<AUnitAIController>(Attacker->GetController());
-    if (AIController)
+    AUnitAIController* AttackerAIController = Cast<AUnitAIController>(Attacker->GetController());
+    if (AttackerAIController)
     {
         // WorldComponent 설정 (없으면)
-        if (!AIController->GetWorldComponent())
+        if (!AttackerAIController->GetWorldComponent())
         {
-            AIController->SetWorldComponent(WorldComponent);
+            AttackerAIController->SetWorldComponent(WorldComponent);
         }
         
         // UnitManager 설정
-        AIController->SetUnitManager(this);
+        AttackerAIController->SetUnitManager(this);
         
         // 전투 시각화 시작
-        AIController->StartCombatVisualization(Attacker, Defender, CombatResult);
+        AttackerAIController->StartCombatVisualization(Attacker, Defender, CombatResult);
     }
-    else
+    
+    // 방어자의 AIController 가져오기
+    AUnitAIController* DefenderAIController = Cast<AUnitAIController>(Defender->GetController());
+    if (DefenderAIController)
     {
-        // AIController가 없으면 즉시 결과 처리 (폴백)
+        // WorldComponent 설정 (없으면)
+        if (!DefenderAIController->GetWorldComponent())
+        {
+            DefenderAIController->SetWorldComponent(WorldComponent);
+        }
+        
+        // UnitManager 설정
+        DefenderAIController->SetUnitManager(this);
+        
+        // 전투 시각화 시작 (같은 CombatResult 사용)
+        DefenderAIController->StartCombatVisualization(Attacker, Defender, CombatResult);
+    }
+    
+    // 양쪽 모두 AIController가 없으면 즉시 결과 처리 (폴백)
+    if (!AttackerAIController && !DefenderAIController)
+    {
         OnCombatVisualizationComplete(Attacker, Defender, CombatResult, FirstHexPos, SecondHexPos);
     }
 }

@@ -530,14 +530,18 @@ void AWorldTileActor::OnTileClicked(UPrimitiveComponent* TouchedComponent, FKey 
 					{
 						AUnitCharacterBase* UnitAtTile = UnitManager->GetUnitAtHex(HexPos);
 						
-						// 유닛이 있고, 플레이어 0의 유닛이 아니면 클릭 무시
-						if (UnitAtTile && UnitAtTile->GetPlayerIndex() != 0)
+						// 유닛이 있고, 플레이어 0의 유닛이 아니면 이동 선택 건너뛰기
+						// (전투 선택은 계속 진행)
+						if (UnitAtTile && UnitAtTile->GetPlayerIndex() == 0)
 						{
-							return; // 다른 플레이어의 유닛이면 클릭 무시
+							UnitManager->HandleMoveSelection(TileData);
 						}
 					}
-					
-					UnitManager->HandleMoveSelection(TileData);
+					else
+					{
+						// 이미 첫 번째 이동 선택이 있으면 이동 선택 처리
+						UnitManager->HandleMoveSelection(TileData);
+					}
 				}
 			}
 		}
@@ -554,14 +558,24 @@ void AWorldTileActor::OnTileClicked(UPrimitiveComponent* TouchedComponent, FKey 
 					{
 						AUnitCharacterBase* UnitAtTile = UnitManager->GetUnitAtHex(HexPos);
 						
-						// 유닛이 있고, 플레이어 0의 유닛이 아니면 클릭 무시
+						// 유닛이 있고, 플레이어 0의 유닛이 아니면 전투 선택 건너뛰기
 						if (UnitAtTile && UnitAtTile->GetPlayerIndex() != 0)
 						{
-							return; // 다른 플레이어의 유닛이면 클릭 무시
+							// 첫 번째 전투 선택은 플레이어 0의 유닛만 가능
+							// return하지 않고 그냥 건너뛰기 (이동 선택은 이미 처리됨)
+						}
+						else
+						{
+							// 플레이어 0의 유닛이거나 유닛이 없으면 전투 선택 처리
+							UnitManager->HandleCombatSelection(TileData);
 						}
 					}
-					
-					UnitManager->HandleCombatSelection(TileData);
+					else
+					{
+						// 이미 첫 번째 전투 선택이 있으면 두 번째 선택으로 전투 선택 처리
+						// (적 유닛도 클릭 가능)
+						UnitManager->HandleCombatSelection(TileData);
+					}
 				}
 			}
 		}

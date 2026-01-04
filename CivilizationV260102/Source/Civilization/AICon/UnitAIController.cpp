@@ -86,6 +86,7 @@ void AUnitAIController::InitBlackboardAndBT()
         Blackboard->SetValueAsVector(KeyTargetHexPosition, FVector::ZeroVector);
         Blackboard->SetValueAsBool(KeyIsInCombat, false);
         Blackboard->SetValueAsBool(KeyCombatComplete, false);
+        Blackboard->SetValueAsBool(KeyIsRangedAttack, false);
     }
 }
 
@@ -221,7 +222,20 @@ void AUnitAIController::StartCombatVisualization(AUnitCharacterBase* Attacker, A
     CurrentCombatResult = CombatResult;
     bIsInCombat = true;
 
-    // 공격자 원래 위치 저장 (복귀용)
+    // ========== 사거리 정보 계산 및 저장 ==========
+    CombatRange = 0;
+    bIsRangedAttack = false;
+    
+    if (Attacker && Attacker->GetUnitStatusComponent())
+    {
+        // 기본 사거리 가져오기
+        CombatRange = Attacker->GetUnitStatusComponent()->GetRange();
+        
+        // 원거리 공격 여부 판단 (Range > 1)
+        bIsRangedAttack = (CombatRange > 1);
+    }
+
+    // 공격자 원래 위치 저장 (복귀용 - 근접 공격만 사용)
     if (WorldComponent && Attacker)
     {
         FVector AttackerWorldPos = Attacker->GetActorLocation();
@@ -233,6 +247,9 @@ void AUnitAIController::StartCombatVisualization(AUnitCharacterBase* Attacker, A
     {
         Blackboard->SetValueAsBool(KeyIsInCombat, true);
         Blackboard->SetValueAsBool(KeyCombatComplete, false);
+        
+        // ========== 원거리 공격 여부 Blackboard에 저장 ==========
+        Blackboard->SetValueAsBool(KeyIsRangedAttack, bIsRangedAttack);
     }
 }
 
@@ -257,6 +274,9 @@ void AUnitAIController::CompleteCombatVisualization()
     {
         Blackboard->SetValueAsBool(KeyIsInCombat, false);
         Blackboard->SetValueAsBool(KeyCombatComplete, true);
+        
+        // ========== 원거리 공격 정보 초기화 ==========
+        Blackboard->SetValueAsBool(KeyIsRangedAttack, false);
     }
 
     // 전투 데이터 초기화
@@ -264,6 +284,10 @@ void AUnitAIController::CompleteCombatVisualization()
     CombatDefender = nullptr;
     CurrentCombatResult.Reset();
     AttackerOriginalHexPosition = FVector2D::ZeroVector;
+    
+    // ========== 사거리 정보 초기화 ==========
+    CombatRange = 0;
+    bIsRangedAttack = false;
 }
 
 

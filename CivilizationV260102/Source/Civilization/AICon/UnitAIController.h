@@ -60,6 +60,10 @@ private:
 
     FVector2D AttackerOriginalHexPosition = FVector2D::ZeroVector;  // 공격자 원래 위치 (복귀용)
 
+    // 전투 사거리 정보
+    int32 CombatRange = 0;  // 현재 전투의 사거리 저장
+    bool bIsRangedAttack = false;  // 원거리 공격 여부 (Range > 1)
+
     // Blackboard 키 이름 상수
     UPROPERTY(EditDefaultsOnly, Category = "BBKeys")
     FName KeyTargetHexPosition = TEXT("TargetHexPosition");
@@ -75,6 +79,9 @@ private:
 
     UPROPERTY(EditDefaultsOnly, Category = "BBKeys")
     FName KeyCombatComplete = TEXT("CombatComplete");
+
+    UPROPERTY(EditDefaultsOnly, Category = "BBKeys")
+    FName KeyIsRangedAttack = TEXT("IsRangedAttack");
 
 public:
     // WorldComponent 설정
@@ -148,5 +155,12 @@ public:
     // 공격자 원래 위치 가져오기
     UFUNCTION(BlueprintCallable, Category = "Unit Combat")
     FVector2D GetAttackerOriginalHexPosition() const { return AttackerOriginalHexPosition; }
+
+    // 전투 사거리 정보 접근 함수
+    UFUNCTION(BlueprintCallable, Category = "Unit Combat")
+    int32 GetCombatRange() const { return CombatRange; }
+
+    UFUNCTION(BlueprintCallable, Category = "Unit Combat")
+    bool IsRangedAttack() const { return bIsRangedAttack; }
 };
 

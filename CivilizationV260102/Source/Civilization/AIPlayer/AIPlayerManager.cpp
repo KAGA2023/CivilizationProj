@@ -673,6 +673,7 @@ void UAIPlayerManager::ProcessCityProductionState(int32 PlayerIndex)
 	if (!AIPlayer->PlayerStateRef.IsValid())
 	{
 		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
 		return;
 	}
 
@@ -680,6 +681,7 @@ void UAIPlayerManager::ProcessCityProductionState(int32 PlayerIndex)
 	if (!PlayerState)
 	{
 		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
 		return;
 	}
 
@@ -688,6 +690,7 @@ void UAIPlayerManager::ProcessCityProductionState(int32 PlayerIndex)
 	if (!CityComponent)
 	{
 		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
 		return;
 	}
 
@@ -697,6 +700,7 @@ void UAIPlayerManager::ProcessCityProductionState(int32 PlayerIndex)
 	{
 		// 이미 생산 중이면 다음 상태로 전환
 		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
 		return;
 	}
 
@@ -909,6 +913,7 @@ void UAIPlayerManager::ProcessTilePurchaseState(int32 PlayerIndex)
 	if (!AIPlayer || !AIPlayer->PlayerStateRef.IsValid())
 	{
 		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
 		return;
 	}
 
@@ -916,6 +921,7 @@ void UAIPlayerManager::ProcessTilePurchaseState(int32 PlayerIndex)
 	if (!PlayerState)
 	{
 		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
 		return;
 	}
 
@@ -932,6 +938,7 @@ void UAIPlayerManager::ProcessTilePurchaseState(int32 PlayerIndex)
 	if (!WorldComponent)
 	{
 		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
 		return;
 	}
 
@@ -992,6 +999,7 @@ void UAIPlayerManager::ProcessTilePurchaseState(int32 PlayerIndex)
 	if (ValidTiles.Num() == 0)
 	{
 		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
 		return;
 	}
 
@@ -1038,6 +1046,7 @@ void UAIPlayerManager::ProcessFacilityState(int32 PlayerIndex)
 	if (!AIPlayer || !AIPlayer->PlayerStateRef.IsValid())
 	{
 		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
 		return;
 	}
 
@@ -1045,6 +1054,7 @@ void UAIPlayerManager::ProcessFacilityState(int32 PlayerIndex)
 	if (!PlayerState)
 	{
 		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
 		return;
 	}
 
@@ -1063,6 +1073,7 @@ void UAIPlayerManager::ProcessFacilityState(int32 PlayerIndex)
 	if (!WorldComponent || !FacilityManager)
 	{
 		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
 		return;
 	}
 
@@ -1070,15 +1081,16 @@ void UAIPlayerManager::ProcessFacilityState(int32 PlayerIndex)
 	// TargetFacilityTile이 초기값(-1, -1)이 아닌지 확인 (헥스 좌표계에서는 음수 좌표가 정상이므로 초기값과 비교)
 	bool bHasTargetFacilityTile = (AIPlayer->TargetFacilityTile != FVector2D(-1, -1));
 	
-	if (bHasTargetFacilityTile)
-	{
-		// 목표 타일이 여전히 유효한지 확인 (시설이 건설되지 않았는지)
-		if (!FacilityManager->HasFacilityAtTile(AIPlayer->TargetFacilityTile))
+		if (bHasTargetFacilityTile)
 		{
-			// 목표 타일이 유효하면 갱신하지 않고 다음 상태로 전환
-			TransitionToNextState(PlayerIndex);
-			return;
-		}
+			// 목표 타일이 여전히 유효한지 확인 (시설이 건설되지 않았는지)
+			if (!FacilityManager->HasFacilityAtTile(AIPlayer->TargetFacilityTile))
+			{
+				// 목표 타일이 유효하면 갱신하지 않고 다음 상태로 전환
+				TransitionToNextState(PlayerIndex);
+				UpdateStateMachine(PlayerIndex);
+				return;
+			}
 		// 시설이 건설되었으면 목표 타일 초기화하고 새로 찾기
 		AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
 	}
@@ -1117,6 +1129,7 @@ void UAIPlayerManager::ProcessFacilityState(int32 PlayerIndex)
 	if (ValidTiles.Num() == 0)
 	{
 		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
 		return;
 	}
 
@@ -1698,6 +1711,7 @@ void UAIPlayerManager::ProcessUnitMovementState(int32 PlayerIndex)
 	if (!AIPlayer->PlayerStateRef.IsValid())
 	{
 		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
 		return;
 	}
 
@@ -1705,6 +1719,7 @@ void UAIPlayerManager::ProcessUnitMovementState(int32 PlayerIndex)
 	if (!PlayerState)
 	{
 		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
 		return;
 	}
 
@@ -1712,6 +1727,7 @@ void UAIPlayerManager::ProcessUnitMovementState(int32 PlayerIndex)
 	if (!World)
 	{
 		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
 		return;
 	}
 
@@ -1719,6 +1735,7 @@ void UAIPlayerManager::ProcessUnitMovementState(int32 PlayerIndex)
 	if (!GameInstance)
 	{
 		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
 		return;
 	}
 
@@ -1728,6 +1745,7 @@ void UAIPlayerManager::ProcessUnitMovementState(int32 PlayerIndex)
 	if (!WorldComponent || !UnitManager)
 	{
 		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
 		return;
 	}
 
