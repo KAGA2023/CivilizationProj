@@ -34,8 +34,11 @@ void UAIPlayerManager::Initialize()
 	{
 		if (USuperGameInstance* GameInstance = Cast<USuperGameInstance>(World->GetGameInstance()))
 		{
-			// AI 플레이어는 PlayerIndex 1~3
-			for (int32 PlayerIndex = 1; PlayerIndex <= 3; PlayerIndex++)
+			// 총 플레이어 수 가져오기 (PlayerIndex 0 = 플레이어, 1부터 = AI)
+			int32 TotalPlayerCount = GameInstance->GetPlayerStateCount();
+			
+			// AI 플레이어는 PlayerIndex 1부터 마지막까지
+			for (int32 PlayerIndex = 1; PlayerIndex < TotalPlayerCount; PlayerIndex++)
 			{
 				if (ASuperPlayerState* PlayerState = GameInstance->GetPlayerState(PlayerIndex))
 				{
@@ -43,43 +46,52 @@ void UAIPlayerManager::Initialize()
 				}
 			}
 
-			//// ========== 디버깅용: AI 플레이어 1, 2, 3이 서로에게 전쟁 선포 ==========
-			//UDiplomacyManager* DiplomacyManager = GameInstance->GetDiplomacyManager();
-			//if (DiplomacyManager)
-			//{
-			//	// TurnComponent에서 현재 라운드 가져오기
-			//	int32 CurrentRound = 1; // 기본값
-			//	if (ASuperGameModeBase* SuperGameMode = Cast<ASuperGameModeBase>(World->GetAuthGameMode()))
-			//	{
-			//		if (UTurnComponent* TurnComponent = SuperGameMode->GetTurnComponent())
-			//		{
-			//			CurrentRound = TurnComponent->GetCurrentRoundNumber();
-			//		}
-			//	}
+			// ========== 디버깅용: AI 플레이어 1, 2, 3이 서로에게 전쟁 선포 ==========
+			UDiplomacyManager* DiplomacyManager = GameInstance->GetDiplomacyManager();
+			if (DiplomacyManager)
+			{
+				// 현재 라운드 가져오기
+				int32 CurrentRound = GetCurrentRound();
 
-			//	// AI 플레이어 1, 2, 3이 서로에게 전쟁 선포
-			//	// Player 1 -> Player 2
-			//	DiplomacyManager->DeclareWar(1, 2, CurrentRound);
-			//	// Player 1 -> Player 3
-			//	DiplomacyManager->DeclareWar(1, 3, CurrentRound);
-			//	// Player 2 -> Player 3
-			//	DiplomacyManager->DeclareWar(2, 3, CurrentRound);
-			//}
+				// AI 플레이어 1, 2, 3이 서로에게 전쟁 선포
+				// Player 1 -> Player 2
+				DiplomacyManager->DeclareWar(1, 2, CurrentRound);
+				// Player 1 -> Player 3
+				DiplomacyManager->DeclareWar(1, 3, CurrentRound);
+				// Player 2 -> Player 3
+				DiplomacyManager->DeclareWar(2, 3, CurrentRound);
+			}
 		}
 	}
 }
 
 void UAIPlayerManager::RegisterAIPlayer(int32 PlayerIndex, ASuperPlayerState* PlayerState)
 {
-	// 유효성 체크
-	if (PlayerIndex < 1 || PlayerIndex > 3)
-	{
-		return; // AI 플레이어는 1~3만 가능
-	}
-
+	// PlayerState 유효성 체크
 	if (!PlayerState)
 	{
 		return;
+	}
+
+	// PlayerIndex 유효성 체크 (1 이상이어야 함, 0은 플레이어)
+	if (PlayerIndex < 1)
+	{
+		return;
+	}
+
+	// GameInstance에서 총 플레이어 수 가져와서 동적 범위 체크
+	if (UWorld* World = GetWorld())
+	{
+		if (USuperGameInstance* GameInstance = Cast<USuperGameInstance>(World->GetGameInstance()))
+		{
+			int32 TotalPlayerCount = GameInstance->GetPlayerStateCount();
+			
+			// AI 플레이어는 PlayerIndex 1부터 (TotalPlayerCount - 1)까지
+			if (PlayerIndex >= TotalPlayerCount)
+			{
+				return; // 범위를 벗어난 플레이어 인덱스
+			}
+		}
 	}
 
 	// AI 플레이어 구조체 생성 및 설정
@@ -135,20 +147,7 @@ void UAIPlayerManager::StartAITurn(int32 PlayerIndex)
 	}
 
 	// 현재 라운드 정보 가져오기
-	int32 CurrentRound = 1;
-	if (UWorld* World = GetWorld())
-	{
-		if (AGameModeBase* GameMode = World->GetAuthGameMode())
-		{
-			if (ASuperGameModeBase* SuperGameMode = Cast<ASuperGameModeBase>(GameMode))
-			{
-				if (UTurnComponent* TurnComponent = SuperGameMode->GetTurnComponent())
-				{
-					CurrentRound = TurnComponent->GetCurrentRoundNumber();
-				}
-			}
-		}
-	}
+	int32 CurrentRound = GetCurrentRound();
 
 	// 새 턴 초기화
 	ResetAIPlayerForNewTurn(*AIPlayer);
@@ -184,6 +183,29 @@ void UAIPlayerManager::ResetAIPlayerForNewTurn(FAIPlayerStruct& AIPlayer)
 	AIPlayer.PendingUnitMovements = 0;
 	AIPlayer.PendingCombatActions = 0;
 	AIPlayer.TargetFacilityTile = FVector2D(-1, -1); // 명시적으로 초기값 설정
+	AIPlayer.PendingPostAsyncState = EAITurnState::None; // 비동기 후 상태 초기화
+	AIPlayer.CombatUnitsQueue.Empty();
+	AIPlayer.CurrentCombatUnitIndex = 0;
+	AIPlayer.bIsProcessingCombatUnit = false;
+}
+
+int32 UAIPlayerManager::GetCurrentRound() const
+{
+	int32 CurrentRound = 1; // 기본값
+	if (UWorld* World = GetWorld())
+	{
+		if (AGameModeBase* GameMode = World->GetAuthGameMode())
+		{
+			if (ASuperGameModeBase* SuperGameMode = Cast<ASuperGameModeBase>(GameMode))
+			{
+				if (UTurnComponent* TurnComponent = SuperGameMode->GetTurnComponent())
+				{
+					CurrentRound = TurnComponent->GetCurrentRoundNumber();
+				}
+			}
+		}
+	}
+	return CurrentRound;
 }
 
 void UAIPlayerManager::UpdateStateMachine(int32 PlayerIndex)
@@ -230,8 +252,20 @@ void UAIPlayerManager::UpdateStateMachine(int32 PlayerIndex)
 			ProcessFacilityState(PlayerIndex);
 			break;
 
-		case EAITurnState::ProcessingUnitMovement:
-			ProcessUnitMovementState(PlayerIndex);
+		case EAITurnState::ProcessingBuilderMovement:
+			ProcessBuilderMovementState(PlayerIndex);
+			break;
+
+		case EAITurnState::ProcessingBuilderBuild:
+			ProcessBuilderBuildState(PlayerIndex);
+			break;
+
+		case EAITurnState::ProcessingCombatUnitMovement:
+			ProcessCombatUnitMovementState(PlayerIndex);
+			break;
+
+		case EAITurnState::ProcessingCombatUnitCombat:
+			ProcessCombatUnitCombatState(PlayerIndex);
 			break;
 
 		case EAITurnState::WaitingForAsync:
@@ -290,13 +324,44 @@ void UAIPlayerManager::TransitionToNextState(int32 PlayerIndex)
 			break;
 
 		case EAITurnState::ProcessingFacility:
-			AIPlayer->CurrentState = EAITurnState::ProcessingUnitMovement;
+			AIPlayer->CurrentState = EAITurnState::ProcessingBuilderMovement;
 			break;
 
-		case EAITurnState::ProcessingUnitMovement:
+		case EAITurnState::ProcessingBuilderMovement:
+			// 비동기 작업이 있으면 대기 상태로, 없으면 건설 상태로
+			if (HasPendingAsyncWork(PlayerIndex))
+			{
+				AIPlayer->PendingPostAsyncState = EAITurnState::ProcessingBuilderBuild;
+				AIPlayer->CurrentState = EAITurnState::WaitingForAsync;
+			}
+			else
+			{
+				AIPlayer->CurrentState = EAITurnState::ProcessingBuilderBuild;
+			}
+			break;
+
+		case EAITurnState::ProcessingBuilderBuild:
+			AIPlayer->CurrentState = EAITurnState::ProcessingCombatUnitMovement;
+			break;
+
+		case EAITurnState::ProcessingCombatUnitMovement:
+			// 비동기 작업이 있으면 대기 상태로, 없으면 전투 상태로
+			if (HasPendingAsyncWork(PlayerIndex))
+			{
+				AIPlayer->PendingPostAsyncState = EAITurnState::ProcessingCombatUnitCombat;
+				AIPlayer->CurrentState = EAITurnState::WaitingForAsync;
+			}
+			else
+			{
+				AIPlayer->CurrentState = EAITurnState::ProcessingCombatUnitCombat;
+			}
+			break;
+
+		case EAITurnState::ProcessingCombatUnitCombat:
 			// 비동기 작업이 있으면 대기 상태로, 없으면 턴 완료
 			if (HasPendingAsyncWork(PlayerIndex))
 			{
+				AIPlayer->PendingPostAsyncState = EAITurnState::TurnComplete;
 				AIPlayer->CurrentState = EAITurnState::WaitingForAsync;
 			}
 			else
@@ -306,8 +371,16 @@ void UAIPlayerManager::TransitionToNextState(int32 PlayerIndex)
 			break;
 
 		case EAITurnState::WaitingForAsync:
-			// 비동기 작업 완료 후 턴 완료
-			AIPlayer->CurrentState = EAITurnState::TurnComplete;
+			// 비동기 작업 완료 후 저장된 상태로 이동, 없으면 턴 완료
+			if (AIPlayer->PendingPostAsyncState != EAITurnState::None)
+			{
+				AIPlayer->CurrentState = AIPlayer->PendingPostAsyncState;
+				AIPlayer->PendingPostAsyncState = EAITurnState::None;
+			}
+			else
+			{
+				AIPlayer->CurrentState = EAITurnState::TurnComplete;
+			}
 			break;
 
 		default:
@@ -340,8 +413,27 @@ void UAIPlayerManager::OnUnitMovementFinished(int32 PlayerIndex)
 		AIPlayer->PendingUnitMovements--;
 	}
 	
+	// 병사 유닛 이동 처리 중이면
+	if (AIPlayer->CurrentState == EAITurnState::ProcessingCombatUnitMovement ||
+		AIPlayer->CurrentState == EAITurnState::WaitingForAsync ||
+		AIPlayer->PendingPostAsyncState == EAITurnState::ProcessingCombatUnitMovement)
+	{
+		// 현재 유닛 처리 완료 - 다음 유닛으로 인덱스 증가
+		AIPlayer->CurrentCombatUnitIndex++;
+		
+		// bIsProcessingCombatUnit은 false로 설정하지 않음 (큐 재초기화 방지)
+		// 다음 유닛 처리를 위해 상태를 명시적으로 ProcessingCombatUnitMovement로 설정
+		AIPlayer->CurrentState = EAITurnState::ProcessingCombatUnitMovement;
+		AIPlayer->PendingPostAsyncState = EAITurnState::None;
+		
+		// UpdateStateMachine()을 호출하면 TransitionToNextState()가 호출되어
+		// WaitingForAsync 상태에서 PendingPostAsyncState로 넘어가버릴 수 있음
+		// 따라서 직접 ProcessCombatUnitMovementState()를 호출하여 다음 유닛 처리
+		ProcessCombatUnitMovementState(PlayerIndex);
+		return; // 여기서 종료, ProcessCombatUnitMovementState에서 처리
+	}
 	// 턴이 활성화되어 있고, 비동기 작업이 없으면 상태 머신 업데이트
-	if (AIPlayer->bIsTurnActive && !HasPendingAsyncWork(PlayerIndex))
+	else if (AIPlayer->bIsTurnActive && !HasPendingAsyncWork(PlayerIndex))
 	{
 		UpdateStateMachine(PlayerIndex);
 	}
@@ -361,8 +453,27 @@ void UAIPlayerManager::OnCombatActionFinished(int32 PlayerIndex)
 		AIPlayer->PendingCombatActions--;
 	}
 	
+	// 병사 유닛 전투 처리 중이면
+	if (AIPlayer->CurrentState == EAITurnState::ProcessingCombatUnitCombat ||
+		AIPlayer->CurrentState == EAITurnState::WaitingForAsync ||
+		AIPlayer->PendingPostAsyncState == EAITurnState::ProcessingCombatUnitCombat)
+	{
+		// 현재 유닛 처리 완료 - 다음 유닛으로 인덱스 증가
+		AIPlayer->CurrentCombatUnitIndex++;
+		
+		// bIsProcessingCombatUnit은 false로 설정하지 않음 (큐 재초기화 방지)
+		// 다음 유닛 처리를 위해 상태를 명시적으로 ProcessingCombatUnitCombat로 설정
+		AIPlayer->CurrentState = EAITurnState::ProcessingCombatUnitCombat;
+		AIPlayer->PendingPostAsyncState = EAITurnState::None;
+		
+		// UpdateStateMachine()을 호출하면 TransitionToNextState()가 호출되어
+		// WaitingForAsync 상태에서 PendingPostAsyncState로 넘어가버릴 수 있음
+		// 따라서 직접 ProcessCombatUnitCombatState()를 호출하여 다음 유닛 처리
+		ProcessCombatUnitCombatState(PlayerIndex);
+		return; // 여기서 종료, ProcessCombatUnitCombatState에서 처리
+	}
 	// 턴이 활성화되어 있고, 비동기 작업이 없으면 상태 머신 업데이트
-	if (AIPlayer->bIsTurnActive && !HasPendingAsyncWork(PlayerIndex))
+	else if (AIPlayer->bIsTurnActive && !HasPendingAsyncWork(PlayerIndex))
 	{
 		UpdateStateMachine(PlayerIndex);
 	}
@@ -380,28 +491,20 @@ void UAIPlayerManager::ProcessDiplomacyState(int32 PlayerIndex)
 		return;
 	}
 
-	// DiplomacyManager 가져오기
+	// DiplomacyManager 및 GameInstance 가져오기
 	UDiplomacyManager* DiplomacyManager = nullptr;
-	int32 CurrentRound = 1;
+	USuperGameInstance* GameInstance = nullptr;
 	if (UWorld* World = GetWorld())
 	{
-		if (USuperGameInstance* GameInstance = Cast<USuperGameInstance>(World->GetGameInstance()))
+		GameInstance = Cast<USuperGameInstance>(World->GetGameInstance());
+		if (GameInstance)
 		{
 			DiplomacyManager = GameInstance->GetDiplomacyManager();
-
-			// 현재 라운드 가져오기
-			if (AGameModeBase* GameMode = World->GetAuthGameMode())
-			{
-				if (ASuperGameModeBase* SuperGameMode = Cast<ASuperGameModeBase>(GameMode))
-				{
-					if (UTurnComponent* TurnComponent = SuperGameMode->GetTurnComponent())
-					{
-						CurrentRound = TurnComponent->GetCurrentRoundNumber();
-					}
-				}
-			}
 		}
 	}
+
+	// 현재 라운드 가져오기
+	int32 CurrentRound = GetCurrentRound();
 
 	if (!DiplomacyManager)
 	{
@@ -409,6 +512,9 @@ void UAIPlayerManager::ProcessDiplomacyState(int32 PlayerIndex)
 		UpdateStateMachine(PlayerIndex);
 		return;
 	}
+
+	// 총 플레이어 수 가져오기
+	int32 TotalPlayerCount = GameInstance ? GameInstance->GetPlayerStateCount() : 4; // 기본값 4 (안전 장치)
 
 	// ================= 1단계: 받은 액션 제안들 응답 처리 =================
 	
@@ -487,8 +593,8 @@ void UAIPlayerManager::ProcessDiplomacyState(int32 PlayerIndex)
 	// ================= 2단계: 액션 발행 (기존 로직) =================
 
 	// 모든 다른 플레이어에 대해 외교 결정
-	// 플레이어 인덱스: 0=Player, 1~3=AI
-	for (int32 OtherPlayerIndex = 0; OtherPlayerIndex < 4; OtherPlayerIndex++)
+	// 플레이어 인덱스: 0=Player, 1~TotalPlayerCount-1=AI
+	for (int32 OtherPlayerIndex = 0; OtherPlayerIndex < TotalPlayerCount; OtherPlayerIndex++)
 	{
 		// 자신은 건너뛰기
 		if (OtherPlayerIndex == PlayerIndex)
@@ -562,7 +668,7 @@ void UAIPlayerManager::ProcessDiplomacyState(int32 PlayerIndex)
 	{
 		// 랜덤 플레이어 선택
 		TArray<int32> AvailablePlayers;
-		for (int32 i = 0; i < 4; i++)
+		for (int32 i = 0; i < TotalPlayerCount; i++)
 		{
 			if (i != PlayerIndex)
 			{
@@ -1098,6 +1204,13 @@ void UAIPlayerManager::ProcessFacilityState(int32 PlayerIndex)
 	// 보유 타일 가져오기
 	TArray<UWorldTile*> OwnedTiles = PlayerState->GetOwnedTiles(WorldComponent);
 
+	// 도시 좌표 가져오기 (도시 타일은 시설 건설 후보에서 제외)
+	FVector2D CityCoord = FVector2D(-1, -1);
+	if (PlayerState->HasCity())
+	{
+		CityCoord = PlayerState->GetCityCoordinate();
+	}
+
 	// 시설이 없는 타일 중 산출량이 높은 타일 찾기
 	TArray<FTileWithTotalYield> ValidTiles;
 	for (UWorldTile* Tile : OwnedTiles)
@@ -1108,6 +1221,12 @@ void UAIPlayerManager::ProcessFacilityState(int32 PlayerIndex)
 		}
 
 		FVector2D TileCoord = Tile->GetGridPosition();
+
+		// 도시가 위치한 타일은 제외
+		if (TileCoord == CityCoord)
+		{
+			continue;
+		}
 
 		// 시설이 이미 건설되어 있는지 확인
 		if (FacilityManager->HasFacilityAtTile(TileCoord))
@@ -1149,17 +1268,53 @@ void UAIPlayerManager::ProcessFacilityState(int32 PlayerIndex)
 	UpdateStateMachine(PlayerIndex);
 }
 
-void UAIPlayerManager::ProcessBuilderUnitMovement(
-	int32 PlayerIndex,
-	FAIPlayerStruct* AIPlayer,
-	ASuperPlayerState* PlayerState,
-	USuperGameInstance* GameInstance,
-	UWorldComponent* WorldComponent,
-	UUnitManager* UnitManager,
-	const TArray<UWorldTile*>& AllTiles,
-	FReservedTiles& ReservedTiles
-)
+void UAIPlayerManager::ProcessBuilderMovementState(int32 PlayerIndex)
 {
+	FAIPlayerStruct* AIPlayer = GetAIPlayerPtr(PlayerIndex);
+	if (!AIPlayer || !AIPlayer->PlayerStateRef.IsValid())
+	{
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	ASuperPlayerState* PlayerState = AIPlayer->PlayerStateRef.Get();
+	if (!PlayerState)
+	{
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	USuperGameInstance* GameInstance = Cast<USuperGameInstance>(World->GetGameInstance());
+	if (!GameInstance)
+	{
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	UWorldComponent* WorldComponent = GameInstance->GetGeneratedWorldComponent();
+	UUnitManager* UnitManager = GameInstance->GetUnitManager();
+
+	if (!WorldComponent || !UnitManager)
+	{
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	// 공통 데이터 준비
+	TArray<UWorldTile*> AllTiles = WorldComponent->GetAllTiles();
+
 	// ========== 건설자 유닛 찾기 ==========
 	TArray<AUnitCharacterBase*> AllUnits = UnitManager->GetAllUnits();
 	AUnitCharacterBase* BuilderUnit = nullptr;
@@ -1174,6 +1329,9 @@ void UAIPlayerManager::ProcessBuilderUnitMovement(
 
 	if (!BuilderUnit)
 	{
+		// 건설자가 없으면 다음 상태로 전환
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
 		return;
 	}
 
@@ -1181,34 +1339,165 @@ void UAIPlayerManager::ProcessBuilderUnitMovement(
 	FVector2D BuilderPosition = FVector2D(-1, -1);
 	if (!FindUnitPosition(BuilderUnit, UnitManager, AllTiles, BuilderPosition))
 	{
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
 		return;
 	}
 
 	// ========== 목표 시설 타일 확인 ==========
-	// 주의: 헥스 좌표계에서는 음수 좌표가 정상이므로, 초기값(-1, -1)과 비교하여 확인
 	bool bHasTargetFacilityTile = (AIPlayer->TargetFacilityTile != FVector2D(-1, -1));
 	if (!bHasTargetFacilityTile)
 	{
+		// 목표 타일이 없으면 다음 상태로 전환
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	// ========== 건설자가 목표 타일에 도착했는지 확인 ==========
+	if (BuilderPosition == AIPlayer->TargetFacilityTile)
+	{
+		// 이미 도착했으면 다음 상태(건설)로 전환
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	// ========== 건설자 이동 처리 ==========
+	// 이동 불가능한 경우 랜덤 배회
+	if (!BuilderUnit->GetUnitStatusComponent()->CanMove())
+	{
+		FVector2D WanderTargetTile = FindValidWanderTile(PlayerIndex, 2, 10);
+		if (WanderTargetTile != FVector2D(-1, -1))
+		{
+			TryMoveUnitToTile(BuilderUnit, BuilderPosition, WanderTargetTile, UnitManager, AIPlayer->PendingUnitMovements);
+		}
+		// 이동 불가능하면 목표 타일 초기화하고 다음 상태로
+		AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	// 이동 가능한 경우 목표 타일로 이동 시도
+	if (TryMoveUnitToTile(BuilderUnit, BuilderPosition, AIPlayer->TargetFacilityTile, UnitManager, AIPlayer->PendingUnitMovements))
+	{
+		// 이동 시작 성공 - 비동기 작업이 시작되었으므로 TransitionToNextState에서 WaitingForAsync로 전환됨
+		TransitionToNextState(PlayerIndex);
+		// UpdateStateMachine은 비동기 작업 완료 후 호출됨
+		return;
+	}
+
+	// 경로가 없으면 랜덤 배회
+	FVector2D WanderTargetTile = FindValidWanderTile(PlayerIndex, 2, 10);
+	if (WanderTargetTile != FVector2D(-1, -1))
+	{
+		TryMoveUnitToTile(BuilderUnit, BuilderPosition, WanderTargetTile, UnitManager, AIPlayer->PendingUnitMovements);
+	}
+
+	// 이동 실패 시 목표 타일 초기화하고 다음 상태로
+	AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
+	TransitionToNextState(PlayerIndex);
+	UpdateStateMachine(PlayerIndex);
+}
+
+void UAIPlayerManager::ProcessBuilderBuildState(int32 PlayerIndex)
+{
+	FAIPlayerStruct* AIPlayer = GetAIPlayerPtr(PlayerIndex);
+	if (!AIPlayer || !AIPlayer->PlayerStateRef.IsValid())
+	{
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	ASuperPlayerState* PlayerState = AIPlayer->PlayerStateRef.Get();
+	if (!PlayerState)
+	{
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	USuperGameInstance* GameInstance = Cast<USuperGameInstance>(World->GetGameInstance());
+	if (!GameInstance)
+	{
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	UWorldComponent* WorldComponent = GameInstance->GetGeneratedWorldComponent();
+	UUnitManager* UnitManager = GameInstance->GetUnitManager();
+	UFacilityManager* FacilityManager = GameInstance->GetFacilityManager();
+
+	if (!WorldComponent || !UnitManager || !FacilityManager)
+	{
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	// ========== 목표 시설 타일 확인 ==========
+	bool bHasTargetFacilityTile = (AIPlayer->TargetFacilityTile != FVector2D(-1, -1));
+	if (!bHasTargetFacilityTile)
+	{
+		// 목표 타일이 없으면 다음 상태로 전환
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	// ========== 건설자 유닛 찾기 ==========
+	TArray<UWorldTile*> AllTiles = WorldComponent->GetAllTiles();
+	TArray<AUnitCharacterBase*> AllUnits = UnitManager->GetAllUnits();
+	AUnitCharacterBase* BuilderUnit = nullptr;
+	for (AUnitCharacterBase* Unit : AllUnits)
+	{
+		if (Unit && Unit->GetPlayerIndex() == PlayerIndex && UnitManager->IsBuilderUnit(Unit))
+		{
+			BuilderUnit = Unit;
+			break;
+		}
+	}
+
+	if (!BuilderUnit)
+	{
+		// 건설자가 없으면 목표 타일 초기화하고 다음 상태로
+		AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	// ========== 건설자 위치 확인 ==========
+	FVector2D BuilderPosition = FVector2D(-1, -1);
+	if (!FindUnitPosition(BuilderUnit, UnitManager, AllTiles, BuilderPosition))
+	{
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
 		return;
 	}
 
 	// ========== 시설 건설 처리 ==========
-	// 건설자가 목표 타일에 도착한 경우
+	// 건설자가 목표 타일에 도착했는지 확인
 	if (BuilderPosition == AIPlayer->TargetFacilityTile)
 	{
-		// 필요한 매니저 및 컴포넌트 가져오기
-		UFacilityManager* FacilityManager = GameInstance->GetFacilityManager();
-		if (!FacilityManager || !PlayerState)
-		{
-			AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
-			return;
-		}
-
 		// 목표 타일 가져오기
 		UWorldTile* TargetTile = WorldComponent->GetTileAtHex(AIPlayer->TargetFacilityTile);
 		if (!TargetTile)
 		{
 			AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
+			TransitionToNextState(PlayerIndex);
+			UpdateStateMachine(PlayerIndex);
 			return;
 		}
 
@@ -1217,6 +1506,8 @@ void UAIPlayerManager::ProcessBuilderUnitMovement(
 		if (AvailableFacilities.Num() == 0)
 		{
 			AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
+			TransitionToNextState(PlayerIndex);
+			UpdateStateMachine(PlayerIndex);
 			return;
 		}
 
@@ -1233,6 +1524,8 @@ void UAIPlayerManager::ProcessBuilderUnitMovement(
 		if (BuildableFacilities.Num() == 0)
 		{
 			AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
+			TransitionToNextState(PlayerIndex);
+			UpdateStateMachine(PlayerIndex);
 			return;
 		}
 
@@ -1243,112 +1536,161 @@ void UAIPlayerManager::ProcessBuilderUnitMovement(
 		// 시설 건설 시도 (성공/실패와 관계없이 목표 타일 초기화)
 		PlayerState->BuildFacility(SelectedFacilityRowName, AIPlayer->TargetFacilityTile);
 		AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
-		return;
 	}
-
-	// ========== 건설자 이동 처리 ==========
-	// 이동 불가능한 경우 랜덤 배회
-	if (!BuilderUnit->GetUnitStatusComponent()->CanMove())
+	else
 	{
-		FVector2D WanderTargetTile = FindValidWanderTile(PlayerIndex, ReservedTiles, 2, 10);
-		if (WanderTargetTile != FVector2D(-1, -1))
-		{
-			TryMoveUnitToTile(BuilderUnit, BuilderPosition, WanderTargetTile, UnitManager, ReservedTiles, AIPlayer->PendingUnitMovements);
-		}
-
-		AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
-		return;
+		// 건설자가 목표 타일에 도착하지 않았으면 목표 타일 유지 (다음 턴에 다시 시도)
+		// 목표 타일은 초기화하지 않음
 	}
 
-	// 이동 가능한 경우 목표 타일로 이동 시도
-	// 목표 타일을 임시로 예약 (경로를 찾기 전에)
-	// 경로를 찾은 후에는 실제 도착 타일로 업데이트됨
-	ReservedTiles.Add(AIPlayer->TargetFacilityTile);
-
-	if (TryMoveUnitToTile(BuilderUnit, BuilderPosition, AIPlayer->TargetFacilityTile, UnitManager, ReservedTiles, AIPlayer->PendingUnitMovements))
-	{
-		return;
-	}
-
-	// 경로가 없으면 예약 해제하고 랜덤 배회
-	ReservedTiles.Remove(AIPlayer->TargetFacilityTile);
-	
-	FVector2D WanderTargetTile = FindValidWanderTile(PlayerIndex, ReservedTiles, 2, 10);
-	if (WanderTargetTile != FVector2D(-1, -1))
-	{
-		TryMoveUnitToTile(BuilderUnit, BuilderPosition, WanderTargetTile, UnitManager, ReservedTiles, AIPlayer->PendingUnitMovements);
-	}
-
-	AIPlayer->TargetFacilityTile = FVector2D(-1, -1);
+	// 다음 상태로 전환
+	TransitionToNextState(PlayerIndex);
+	UpdateStateMachine(PlayerIndex);
 }
 
-void UAIPlayerManager::ProcessCombatUnitsMovement(
-	int32 PlayerIndex,
-	FAIPlayerStruct* AIPlayer,
-	ASuperPlayerState* PlayerState,
-	USuperGameInstance* GameInstance,
-	UWorldComponent* WorldComponent,
-	UUnitManager* UnitManager,
-	const TArray<UWorldTile*>& AllTiles,
-	const TArray<AUnitCharacterBase*>& AllUnits,
-	FReservedTiles& ReservedTiles
-)
+void UAIPlayerManager::ProcessCombatUnitMovementState(int32 PlayerIndex)
 {
-	// ========== 전쟁 상태 확인 ==========
-	UDiplomacyManager* DiplomacyManager = GameInstance->GetDiplomacyManager();
-	bool bIsAtWar = false;
-	if (DiplomacyManager)
+	FAIPlayerStruct* AIPlayer = GetAIPlayerPtr(PlayerIndex);
+	if (!AIPlayer || !AIPlayer->PlayerStateRef.IsValid())
 	{
-		// 모든 다른 플레이어 확인 (0, 1, 2, 3 중 PlayerIndex가 아닌 것들)
-		for (int32 OtherPlayerIndex = 0; OtherPlayerIndex < 4; OtherPlayerIndex++)
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	ASuperPlayerState* PlayerState = AIPlayer->PlayerStateRef.Get();
+	if (!PlayerState)
+	{
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	USuperGameInstance* GameInstance = Cast<USuperGameInstance>(World->GetGameInstance());
+	if (!GameInstance)
+	{
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	UWorldComponent* WorldComponent = GameInstance->GetGeneratedWorldComponent();
+	UUnitManager* UnitManager = GameInstance->GetUnitManager();
+	UDiplomacyManager* DiplomacyManager = GameInstance->GetDiplomacyManager();
+
+	if (!WorldComponent || !UnitManager || !DiplomacyManager)
+	{
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	// 공통 데이터 준비
+	TArray<UWorldTile*> AllTiles = WorldComponent->GetAllTiles();
+	TArray<AUnitCharacterBase*> AllUnits = UnitManager->GetAllUnits();
+
+	// ========== 전쟁 상태 확인 ==========
+	bool bIsAtWar = false;
+	// 총 플레이어 수 가져오기
+	int32 TotalPlayerCount = GameInstance->GetPlayerStateCount();
+	for (int32 OtherPlayerIndex = 0; OtherPlayerIndex < TotalPlayerCount; OtherPlayerIndex++)
+	{
+		if (OtherPlayerIndex != PlayerIndex && 
+			DiplomacyManager->IsAtWar(PlayerIndex, OtherPlayerIndex))
 		{
-			if (OtherPlayerIndex != PlayerIndex && 
-				DiplomacyManager->IsAtWar(PlayerIndex, OtherPlayerIndex))
+			bIsAtWar = true;
+			break;
+		}
+	}
+
+	// ========== 순차 처리 초기화 ==========
+	// 첫 호출이거나 이전 유닛 처리가 완료된 경우
+	if (!AIPlayer->bIsProcessingCombatUnit)
+	{
+		// 큐 초기화 및 인덱스 리셋
+		AIPlayer->CombatUnitsQueue.Empty();
+		
+		// 병사 유닛 찾기 및 큐에 추가
+		for (AUnitCharacterBase* Unit : AllUnits)
+		{
+			if (Unit && 
+				Unit->GetPlayerIndex() == PlayerIndex && 
+				UnitManager->IsCombatUnit(Unit))
 			{
-				bIsAtWar = true;
-				break;
+				AIPlayer->CombatUnitsQueue.Add(TWeakObjectPtr<AUnitCharacterBase>(Unit));
 			}
 		}
+		
+		AIPlayer->CurrentCombatUnitIndex = 0;
 	}
 
-	// ========== 병사 유닛 찾기 ==========
-	TArray<AUnitCharacterBase*> CombatUnits;
-	for (AUnitCharacterBase* Unit : AllUnits)
+	// ========== 순차적으로 각 병사 유닛 처리 ==========
+	while (AIPlayer->CurrentCombatUnitIndex < AIPlayer->CombatUnitsQueue.Num())
 	{
-		if (Unit && 
-			Unit->GetPlayerIndex() == PlayerIndex && 
-			UnitManager->IsCombatUnit(Unit))
+		// 현재 처리할 유닛 가져오기
+		AUnitCharacterBase* CombatUnit = AIPlayer->CombatUnitsQueue[AIPlayer->CurrentCombatUnitIndex].Get();
+		
+		// 유닛이 유효하지 않으면 스킵
+		if (!CombatUnit || !IsValid(CombatUnit))
 		{
-			CombatUnits.Add(Unit);
+			AIPlayer->CurrentCombatUnitIndex++;
+			continue;
 		}
-	}
 
-	// ========== 각 병사 유닛 처리 ==========
-	for (AUnitCharacterBase* CombatUnit : CombatUnits)
-	{
 		// 현재 위치 확인
 		FVector2D CombatUnitPosition = FVector2D(-1, -1);
 		if (!FindUnitPosition(CombatUnit, UnitManager, AllTiles, CombatUnitPosition))
 		{
+			AIPlayer->CurrentCombatUnitIndex++;
 			continue;
 		}
 
 		// 이동 가능 여부 확인
 		if (!CombatUnit->GetUnitStatusComponent()->CanMove())
 		{
+			AIPlayer->CurrentCombatUnitIndex++;
 			continue;
 		}
 
-		// 전쟁 중이 아니면 평화 상태 로직 (기존)
+		// 전쟁 중이 아니면 평화 상태 로직 (배회)
 		if (!bIsAtWar)
 		{
 			// 랜덤 배회 타일 선택
-			FVector2D WanderTargetTile = FindValidWanderTile(PlayerIndex, ReservedTiles, 2, 10);
+			FVector2D WanderTargetTile = FindValidWanderTile(PlayerIndex, 2, 10);
 			if (WanderTargetTile != FVector2D(-1, -1))
 			{
-				TryMoveUnitToTile(CombatUnit, CombatUnitPosition, WanderTargetTile, UnitManager, ReservedTiles, AIPlayer->PendingUnitMovements);
+				// 이동 시작 시도
+				if (TryMoveUnitToTile(CombatUnit, CombatUnitPosition, WanderTargetTile, UnitManager, AIPlayer->PendingUnitMovements))
+				{
+					// 이동 시작 성공
+					AIPlayer->bIsProcessingCombatUnit = true;
+					AIPlayer->PendingPostAsyncState = EAITurnState::ProcessingCombatUnitMovement;
+					
+					// 비동기 작업 대기 상태로 전환
+					TransitionToNextState(PlayerIndex);
+					return; // 여기서 종료, 콜백에서 재개
+				}
+				else
+				{
+					// 이동 실패 시 다음 유닛으로
+					AIPlayer->CurrentCombatUnitIndex++;
+					continue;
+				}
 			}
-			continue;
+			else
+			{
+				// 배회 타일을 찾을 수 없으면 다음 유닛으로
+				AIPlayer->CurrentCombatUnitIndex++;
+				continue;
+			}
 		}
 
 		// ========== 전쟁 상태 로직 ==========
@@ -1359,22 +1701,94 @@ void UAIPlayerManager::ProcessCombatUnitsMovement(
 
 		if (EnemyUnits.Num() > 0)
 		{
-			// 적 유닛이 있으면 전투 우선
+			// 적 유닛이 있으면 적 유닛의 사정거리 내 공격 가능한 타일로 이동
 			AUnitCharacterBase* TargetEnemy = EnemyUnits[0]; // 가장 가까운 적
 			
 			// 적 유닛의 위치 찾기
 			FVector2D EnemyPosition = FVector2D(-1, -1);
 			if (!FindUnitPosition(TargetEnemy, UnitManager, AllTiles, EnemyPosition))
 			{
+				AIPlayer->CurrentCombatUnitIndex++;
 				continue;
 			}
 
-			// 이동 및 공격 시도
-			TryMoveAndAttackEnemy(
-				CombatUnit, CombatUnitPosition, TargetEnemy, EnemyPosition,
-				UnitManager, WorldComponent, ReservedTiles,
-				AIPlayer->PendingUnitMovements, AIPlayer->PendingCombatActions
-			);
+			// 전투 유닛의 사정거리 계산
+			int32 BaseRange = 1; // 기본 사정거리
+			int32 FinalRange = BaseRange;
+			if (UUnitStatusComponent* StatusComp = CombatUnit->GetUnitStatusComponent())
+			{
+				BaseRange = StatusComp->GetRange();
+				FinalRange = BaseRange;
+				
+				// 원거리 유닛(Range > 1)이면 Range 보너스 적용 (현재 위치 기준)
+				if (BaseRange > 1)
+				{
+					UUnitCombatComponent* CombatComp = CombatUnit->GetUnitCombatComponent();
+					if (CombatComp)
+					{
+						int32 RangeBonus = CombatComp->CalculateRangeBonus(CombatUnitPosition);
+						FinalRange += RangeBonus;
+					}
+				}
+			}
+
+			// 적 유닛 주변 사정거리 내 타일들 찾기
+			TArray<FVector2D> TilesInAttackRange = WorldComponent->GetHexesInRadius(EnemyPosition, FinalRange);
+			
+			// 현재 위치에서 이동 가능한 타일 중 가장 가까운 타일 찾기
+			FVector2D BestTargetTile = FVector2D(-1, -1);
+			int32 MinDistance = INT32_MAX;
+			int32 MaxMovementCost = UnitManager->GetUnitRemainingMovement(CombatUnit);
+			
+			for (const FVector2D& Tile : TilesInAttackRange)
+			{
+				// 타일이 유효한지 확인
+				if (!WorldComponent->IsValidHexPosition(Tile))
+				{
+					continue;
+				}
+				
+				// 유닛 배치 가능한지 확인
+				if (!UnitManager->CanPlaceUnitAtHex(Tile, CombatUnit))
+				{
+					continue;
+				}
+				
+				// 현재 위치에서 이 타일까지 이동 가능한지 확인 (경로 탐색)
+				TArray<FVector2D> Path = UnitManager->FindPathWithMovementCost(
+					CombatUnitPosition, Tile, MaxMovementCost
+				);
+				
+				if (Path.Num() > 1)
+				{
+					// 이동 가능한 타일 중 가장 가까운 타일 선택
+					int32 Distance = WorldComponent->GetHexDistance(CombatUnitPosition, Tile);
+					if (Distance < MinDistance)
+					{
+						MinDistance = Distance;
+						BestTargetTile = Tile;
+					}
+				}
+			}
+
+			// 사정거리 내 공격 가능한 타일로 이동 시도
+			if (BestTargetTile != FVector2D(-1, -1))
+			{
+				if (TryMoveUnitToTile(CombatUnit, CombatUnitPosition, BestTargetTile, UnitManager, AIPlayer->PendingUnitMovements))
+				{
+					// 이동 시작 성공
+					AIPlayer->bIsProcessingCombatUnit = true;
+					AIPlayer->PendingPostAsyncState = EAITurnState::ProcessingCombatUnitMovement;
+					
+					// 비동기 작업 대기 상태로 전환
+					TransitionToNextState(PlayerIndex);
+					return; // 여기서 종료, 콜백에서 재개
+				}
+			}
+			
+			// 사정거리 내 공격 가능한 타일로 이동 실패 시 다음 유닛으로
+			AIPlayer->CurrentCombatUnitIndex++;
+			continue;
 		}
 		else
 		{
@@ -1384,10 +1798,266 @@ void UAIPlayerManager::ProcessCombatUnitsMovement(
 			);
 			if (EnemyCityCoord != FVector2D(-1, -1))
 			{
-				TryMoveUnitToTile(CombatUnit, CombatUnitPosition, EnemyCityCoord, UnitManager, ReservedTiles, AIPlayer->PendingUnitMovements);
+				// 이동 시작 시도
+				if (TryMoveUnitToTile(CombatUnit, CombatUnitPosition, EnemyCityCoord, UnitManager, AIPlayer->PendingUnitMovements))
+				{
+					// 이동 시작 성공
+					AIPlayer->bIsProcessingCombatUnit = true;
+					AIPlayer->PendingPostAsyncState = EAITurnState::ProcessingCombatUnitMovement;
+					
+					// 비동기 작업 대기 상태로 전환
+					TransitionToNextState(PlayerIndex);
+					return; // 여기서 종료, 콜백에서 재개
+				}
+				else
+				{
+					// 이동 실패 시 다음 유닛으로
+					AIPlayer->CurrentCombatUnitIndex++;
+					continue;
+				}
+			}
+			else
+			{
+				// 적 도시를 찾을 수 없으면 다음 유닛으로
+				AIPlayer->CurrentCombatUnitIndex++;
+				continue;
 			}
 		}
 	}
+
+	// ========== 모든 유닛 처리 완료 확인 ==========
+	// while 루프가 끝났다는 것은 CurrentCombatUnitIndex >= CombatUnitsQueue.Num()이라는 의미
+	// 이는 모든 유닛을 처리했다는 의미이므로 다음 상태로 전환
+	// 하지만 이동이 시작되어 비동기 대기 중인 경우는 여기서 처리하지 않음 (콜백에서 처리)
+	if (AIPlayer->CurrentCombatUnitIndex >= AIPlayer->CombatUnitsQueue.Num())
+	{
+		// 모든 유닛 처리 완료
+		AIPlayer->bIsProcessingCombatUnit = false;
+		AIPlayer->CurrentCombatUnitIndex = 0;
+		AIPlayer->CombatUnitsQueue.Empty();
+
+		// 다음 상태로 전환
+		TransitionToNextState(PlayerIndex);
+		if (!HasPendingAsyncWork(PlayerIndex))
+		{
+			UpdateStateMachine(PlayerIndex);
+		}
+	}
+	// 아직 처리할 유닛이 남아있거나 이동이 시작되어 비동기 대기 중인 경우는 여기서 아무것도 하지 않음
+	// (이동 완료 후 OnUnitMovementFinished에서 다시 ProcessCombatUnitMovementState가 호출됨)
+}
+
+void UAIPlayerManager::ProcessCombatUnitCombatState(int32 PlayerIndex)
+{
+	FAIPlayerStruct* AIPlayer = GetAIPlayerPtr(PlayerIndex);
+	if (!AIPlayer || !AIPlayer->PlayerStateRef.IsValid())
+	{
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	ASuperPlayerState* PlayerState = AIPlayer->PlayerStateRef.Get();
+	if (!PlayerState)
+	{
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	USuperGameInstance* GameInstance = Cast<USuperGameInstance>(World->GetGameInstance());
+	if (!GameInstance)
+	{
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	UWorldComponent* WorldComponent = GameInstance->GetGeneratedWorldComponent();
+	UUnitManager* UnitManager = GameInstance->GetUnitManager();
+	UDiplomacyManager* DiplomacyManager = GameInstance->GetDiplomacyManager();
+
+	if (!WorldComponent || !UnitManager || !DiplomacyManager)
+	{
+		TransitionToNextState(PlayerIndex);
+		UpdateStateMachine(PlayerIndex);
+		return;
+	}
+
+	// 공통 데이터 준비
+	TArray<UWorldTile*> AllTiles = WorldComponent->GetAllTiles();
+	TArray<AUnitCharacterBase*> AllUnits = UnitManager->GetAllUnits();
+
+	// ========== 순차 처리 초기화 ==========
+	// 첫 호출이거나 이전 유닛 처리가 완료된 경우
+	if (!AIPlayer->bIsProcessingCombatUnit)
+	{
+		// 큐 초기화 및 인덱스 리셋
+		AIPlayer->CombatUnitsQueue.Empty();
+		
+		// 병사 유닛 찾기 및 큐에 추가
+		for (AUnitCharacterBase* Unit : AllUnits)
+		{
+			if (Unit && 
+				Unit->GetPlayerIndex() == PlayerIndex && 
+				UnitManager->IsCombatUnit(Unit))
+			{
+				AIPlayer->CombatUnitsQueue.Add(TWeakObjectPtr<AUnitCharacterBase>(Unit));
+			}
+		}
+		
+		AIPlayer->CurrentCombatUnitIndex = 0;
+	}
+
+	// ========== 순차적으로 각 병사 유닛 처리 ==========
+	while (AIPlayer->CurrentCombatUnitIndex < AIPlayer->CombatUnitsQueue.Num())
+	{
+		// 현재 처리할 유닛 가져오기
+		AUnitCharacterBase* CombatUnit = AIPlayer->CombatUnitsQueue[AIPlayer->CurrentCombatUnitIndex].Get();
+		
+		// 유닛이 유효하지 않으면 스킵
+		if (!CombatUnit || !IsValid(CombatUnit))
+		{
+			AIPlayer->CurrentCombatUnitIndex++;
+			continue;
+		}
+
+		// 현재 위치 확인
+		FVector2D CombatUnitPosition = FVector2D(-1, -1);
+		if (!FindUnitPosition(CombatUnit, UnitManager, AllTiles, CombatUnitPosition))
+		{
+			AIPlayer->CurrentCombatUnitIndex++;
+			continue;
+		}
+
+		// 공격 가능 여부 확인
+		UUnitStatusComponent* StatusComp = CombatUnit->GetUnitStatusComponent();
+		if (!StatusComp || !StatusComp->CanAttack())
+		{
+			AIPlayer->CurrentCombatUnitIndex++;
+			continue;
+		}
+
+		// 사거리 계산
+		int32 BaseRange = StatusComp->GetRange();
+		int32 FinalRange = BaseRange;
+
+		// 원거리 유닛(Range > 1)이면 Range 보너스 적용
+		if (BaseRange > 1)
+		{
+			UUnitCombatComponent* CombatComp = CombatUnit->GetUnitCombatComponent();
+			if (CombatComp)
+			{
+				int32 RangeBonus = CombatComp->CalculateRangeBonus(CombatUnitPosition);
+				FinalRange += RangeBonus;
+			}
+		}
+
+		// 현재 위치에서 사거리 내 적 유닛 탐지
+		TArray<AUnitCharacterBase*> EnemyUnits = FindEnemyUnitsInRange(
+			CombatUnitPosition, FinalRange, PlayerIndex, UnitManager, WorldComponent, DiplomacyManager
+		);
+
+		if (EnemyUnits.Num() > 0)
+		{
+			// 사거리 내 적 유닛이 있으면 즉시 공격 시도
+			AUnitCharacterBase* TargetEnemy = EnemyUnits[0]; // 가장 가까운 적
+			
+			// 적 유닛의 위치 찾기
+			FVector2D EnemyPosition = FVector2D(-1, -1);
+			if (!FindUnitPosition(TargetEnemy, UnitManager, AllTiles, EnemyPosition))
+			{
+				AIPlayer->CurrentCombatUnitIndex++;
+				continue;
+			}
+
+			// 전투 가능 여부 확인
+			UUnitCombatComponent* CombatComp = CombatUnit->GetUnitCombatComponent();
+			if (!CombatComp)
+			{
+				AIPlayer->CurrentCombatUnitIndex++;
+				continue;
+			}
+
+			if (!CombatComp->CanExecuteCombat(CombatUnit, TargetEnemy, CombatUnitPosition, EnemyPosition))
+			{
+				AIPlayer->CurrentCombatUnitIndex++;
+				continue;
+			}
+
+			// 전투 시작
+			AIPlayer->bIsProcessingCombatUnit = true;
+
+			// 전투 실행
+			int32 HexDistance = WorldComponent->GetHexDistance(CombatUnitPosition, EnemyPosition);
+			FCombatResult CombatResult = CombatComp->ExecuteCombat(CombatUnit, TargetEnemy, HexDistance, CombatUnitPosition, EnemyPosition);
+
+			// 공격자의 UnitVisualizationComponent 가져오기
+			UUnitVisualizationComponent* AttackerVisComp = CombatUnit->GetUnitVisualizationComponent();
+			if (AttackerVisComp)
+			{
+				// WorldComponent 설정 (없으면)
+				if (!AttackerVisComp->GetWorldComponent())
+				{
+					AttackerVisComp->SetWorldComponent(WorldComponent);
+				}
+
+				// UnitManager 설정
+				AttackerVisComp->SetUnitManager(UnitManager);
+
+				// 전투 시각화 시작
+				AttackerVisComp->StartCombatVisualization(CombatUnit, TargetEnemy, CombatResult);
+			}
+			else
+			{
+				// UnitVisualizationComponent가 없으면 즉시 결과 처리 (폴백)
+				UnitManager->OnCombatVisualizationComplete(CombatUnit, TargetEnemy, CombatResult, CombatUnitPosition, EnemyPosition);
+			}
+
+			// PendingCombatActions 증가
+			AIPlayer->PendingCombatActions++;
+			AIPlayer->PendingPostAsyncState = EAITurnState::ProcessingCombatUnitCombat;
+
+			// 비동기 작업 대기 상태로 전환
+			TransitionToNextState(PlayerIndex);
+			return; // 여기서 종료, 콜백에서 재개
+		}
+		else
+		{
+			// 사거리 내 공격 가능한 적 유닛이 없으면 다음 유닛으로
+			AIPlayer->CurrentCombatUnitIndex++;
+			continue;
+		}
+	}
+
+	// ========== 모든 유닛 처리 완료 확인 ==========
+	// while 루프가 끝났다는 것은 CurrentCombatUnitIndex >= CombatUnitsQueue.Num()이라는 의미
+	// 이는 모든 유닛을 처리했다는 의미이므로 다음 상태로 전환
+	// 하지만 전투가 시작되어 비동기 대기 중인 경우는 여기서 처리하지 않음 (콜백에서 처리)
+	if (AIPlayer->CurrentCombatUnitIndex >= AIPlayer->CombatUnitsQueue.Num())
+	{
+		// 모든 유닛 처리 완료
+		AIPlayer->bIsProcessingCombatUnit = false;
+		AIPlayer->CurrentCombatUnitIndex = 0;
+		AIPlayer->CombatUnitsQueue.Empty();
+
+		// 다음 상태로 전환
+		TransitionToNextState(PlayerIndex);
+		if (!HasPendingAsyncWork(PlayerIndex))
+		{
+			UpdateStateMachine(PlayerIndex);
+		}
+	}
+	// 아직 처리할 유닛이 남아있거나 전투가 시작되어 비동기 대기 중인 경우는 여기서 아무것도 하지 않음
+	// (전투 완료 후 OnCombatActionFinished에서 다시 ProcessCombatUnitCombatState가 호출됨)
 }
 
 // ================= 전쟁 상태 헬퍼 함수 구현 =================
@@ -1549,156 +2219,6 @@ FVector2D UAIPlayerManager::FindClosestEnemyCity(
 	return ClosestEnemyCityCoord;
 }
 
-bool UAIPlayerManager::TryMoveAndAttackEnemy(
-	AUnitCharacterBase* CombatUnit,
-	FVector2D CombatUnitPosition,
-	AUnitCharacterBase* EnemyUnit,
-	FVector2D EnemyPosition,
-	UUnitManager* UnitManager,
-	UWorldComponent* WorldComponent,
-	FReservedTiles& ReservedTiles,
-	int32& OutPendingMovements,
-	int32& OutPendingCombatActions
-)
-{
-	if (!CombatUnit || !EnemyUnit || !UnitManager || !WorldComponent)
-	{
-		return false;
-	}
-
-	// 공격 가능 여부 확인
-	UUnitStatusComponent* StatusComp = CombatUnit->GetUnitStatusComponent();
-	if (!StatusComp || !StatusComp->CanAttack())
-	{
-		return false;
-	}
-
-	// 사거리 계산
-	int32 BaseRange = StatusComp->GetRange();
-	int32 FinalRange = BaseRange;
-
-	// 원거리 유닛(Range > 1)이면 Range 보너스 적용
-	if (BaseRange > 1)
-	{
-		UUnitCombatComponent* CombatComp = CombatUnit->GetUnitCombatComponent();
-		if (CombatComp)
-		{
-			int32 RangeBonus = CombatComp->CalculateRangeBonus(CombatUnitPosition);
-			FinalRange += RangeBonus;
-		}
-	}
-
-	// 현재 거리 확인
-	int32 CurrentDistance = WorldComponent->GetHexDistance(CombatUnitPosition, EnemyPosition);
-
-	// 사거리 내인지 확인
-	if (CurrentDistance <= FinalRange)
-	{
-		// 바로 공격 가능
-		// 전투 가능 여부 확인
-		UUnitCombatComponent* CombatComp = CombatUnit->GetUnitCombatComponent();
-		if (!CombatComp)
-		{
-			return false;
-		}
-
-		if (!CombatComp->CanExecuteCombat(CombatUnit, EnemyUnit, CombatUnitPosition, EnemyPosition))
-		{
-			return false;
-		}
-
-		// 전투 실행 (UnitManager의 ExecuteCombatBetweenSelectedUnits 로직 재사용)
-		// 거리 계산
-		int32 HexDistance = WorldComponent->GetHexDistance(CombatUnitPosition, EnemyPosition);
-
-		// 전투 계산 즉시 실행 (데미지 적용 포함)
-		FCombatResult CombatResult = CombatComp->ExecuteCombat(CombatUnit, EnemyUnit, HexDistance, CombatUnitPosition, EnemyPosition);
-
-		// 공격자의 UnitVisualizationComponent 가져오기
-		UUnitVisualizationComponent* AttackerVisComp = CombatUnit->GetUnitVisualizationComponent();
-		if (AttackerVisComp)
-		{
-			// WorldComponent 설정 (없으면)
-			if (!AttackerVisComp->GetWorldComponent())
-			{
-				AttackerVisComp->SetWorldComponent(WorldComponent);
-			}
-
-			// UnitManager 설정
-			AttackerVisComp->SetUnitManager(UnitManager);
-
-			// 전투 시각화 시작
-			AttackerVisComp->StartCombatVisualization(CombatUnit, EnemyUnit, CombatResult);
-		}
-		else
-		{
-			// UnitVisualizationComponent가 없으면 즉시 결과 처리 (폴백)
-			UnitManager->OnCombatVisualizationComplete(CombatUnit, EnemyUnit, CombatResult, CombatUnitPosition, EnemyPosition);
-		}
-
-		// PendingCombatActions 증가
-		OutPendingCombatActions++;
-		return true;
-	}
-	else
-	{
-		// 이동 후 공격 필요
-		// 이동 목표 타일 선택: 사거리 내 타일 중 현재 위치에서 가장 가까운 타일
-		TArray<FVector2D> HexesInRange = WorldComponent->GetHexesInRadius(EnemyPosition, FinalRange);
-
-		// 유닛의 남은 이동력 가져오기
-		int32 MaxMovementCost = UnitManager->GetUnitRemainingMovement(CombatUnit);
-
-		FVector2D BestTargetTile = FVector2D(-1, -1);
-		int32 BestDistance = INT32_MAX;
-
-		// 각 후보 타일 확인
-		for (const FVector2D& CandidateTile : HexesInRange)
-		{
-			// 타일이 이동 가능한지 확인
-			if (!UnitManager->CanPlaceUnitAtHex(CandidateTile))
-			{
-				continue;
-			}
-
-			// 경로 찾기
-			TArray<FVector2D> Path = UnitManager->FindPathWithMovementCost(CombatUnitPosition, CandidateTile, MaxMovementCost);
-			if (Path.Num() <= 1)
-			{
-				continue; // 경로가 없으면 건너뛰기
-			}
-
-			// 현재 위치에서의 거리 계산
-			int32 Distance = WorldComponent->GetHexDistance(CombatUnitPosition, CandidateTile);
-			if (Distance < BestDistance)
-			{
-				BestDistance = Distance;
-				BestTargetTile = CandidateTile;
-			}
-		}
-
-		// 이동 목표 타일이 없으면 실패
-		if (BestTargetTile == FVector2D(-1, -1))
-		{
-			return false;
-		}
-
-		// 이동 실행
-		ReservedTiles.Add(BestTargetTile);
-		if (TryMoveUnitToTile(CombatUnit, CombatUnitPosition, BestTargetTile, UnitManager, ReservedTiles, OutPendingMovements))
-		{
-			// 이동 후 공격은 비동기이므로, 이동 완료 후 처리하거나 다음 턴에 처리
-			// 현재는 이동만 실행
-			return true;
-		}
-		else
-		{
-			// 이동 실패 시 예약 해제
-			ReservedTiles.Remove(BestTargetTile);
-			return false;
-		}
-	}
-}
 
 void UAIPlayerManager::ProcessUnitMovementState(int32 PlayerIndex)
 {
@@ -1750,52 +2270,11 @@ void UAIPlayerManager::ProcessUnitMovementState(int32 PlayerIndex)
 		return;
 	}
 
-	// 공통 데이터 준비
-	TArray<UWorldTile*> AllTiles = WorldComponent->GetAllTiles();
-	TArray<AUnitCharacterBase*> AllUnits = UnitManager->GetAllUnits();
-	
-	// 예약된 타일 추적 시스템
-	// 이미 이동을 시작한 유닛들의 목표 타일(실제 도착 타일)을 추적하여 중복 이동 방지
-	FReservedTiles ReservedTiles;
-
-	// 건설자 유닛 이동 처리
-	ProcessBuilderUnitMovement(
-		PlayerIndex,
-		AIPlayer,
-		PlayerState,
-		GameInstance,
-		WorldComponent,
-		UnitManager,
-		AllTiles,
-		ReservedTiles
-	);
-
-	// 병사 유닛 이동 처리
-	ProcessCombatUnitsMovement(
-		PlayerIndex,
-		AIPlayer,
-		PlayerState,
-		GameInstance,
-		WorldComponent,
-		UnitManager,
-		AllTiles,
-		AllUnits,
-		ReservedTiles
-	);
-
-	// 모든 처리 완료
-	// 이동을 시작한 유닛이 있으면 WaitingForAsync로 전환, 없으면 다음 상태로
-	if (AIPlayer->PendingUnitMovements > 0)
-	{
-		AIPlayer->CurrentState = EAITurnState::WaitingForAsync;
-		// 비동기 작업이 완료되면 콜백에서 UpdateStateMachine이 호출됨
-	}
-	else
-	{
-		TransitionToNextState(PlayerIndex);
-		// 상태 전환 후 상태 머신 업데이트 (다음 상태 처리)
-		UpdateStateMachine(PlayerIndex);
-	}
+	// ProcessUnitMovementState는 이제 사용되지 않음
+	// 병사 유닛 이동 및 전투는 ProcessingCombatUnitMovement와 ProcessingCombatUnitCombat로 분리됨
+	// 다음 상태로 전환
+	TransitionToNextState(PlayerIndex);
+	UpdateStateMachine(PlayerIndex);
 }
 
 // ================= 유닛 이동 헬퍼 함수 구현 =================
@@ -1835,7 +2314,6 @@ bool UAIPlayerManager::TryMoveUnitToTile(
 	FVector2D StartPosition,
 	FVector2D TargetTile,
 	UUnitManager* UnitManager,
-	FReservedTiles& ReservedTiles,
 	int32& OutPendingMovements
 )
 {
@@ -1862,28 +2340,12 @@ bool UAIPlayerManager::TryMoveUnitToTile(
 		FVector2D DestinationTile = Path[Path.Num() - 1];
 		
 		// 경로를 찾은 후, 실제 이동 시작 전에 목적지 타일이 여전히 사용 가능한지 최종 확인
-		// (경로 탐색 중 다른 유닛이 같은 타일을 예약했을 수 있음)
 		// 자기 자신의 예약은 무시하도록 Unit 파라미터 전달
 		if (!UnitManager->CanPlaceUnitAtHex(DestinationTile, Unit))
 		{
 			// 목적지가 더 이상 사용 불가능하면 이동 취소
-			// 원래 목표 타일 예약 해제
-			if (DestinationTile != TargetTile)
-			{
-				ReservedTiles.Remove(TargetTile);
-			}
-			ReservedTiles.Remove(DestinationTile);
 			return false;
 		}
-		
-		// 원래 목표 타일과 실제 도착 타일이 다르면 예약 업데이트
-		if (DestinationTile != TargetTile)
-		{
-			ReservedTiles.Remove(TargetTile);
-		}
-		
-		// 실제 도착 타일 예약 (AI 로컬 예약, UnitManager의 전역 예약과는 별개)
-		ReservedTiles.Add(DestinationTile);
 		
 		// 이동 시작 (StartVisualMovement 내부에서도 CanPlaceUnitAtHex 재확인)
 		UnitManager->StartVisualMovement(Unit, Path);
@@ -1897,7 +2359,6 @@ bool UAIPlayerManager::TryMoveUnitToTile(
 
 FVector2D UAIPlayerManager::FindValidWanderTile(
 	int32 PlayerIndex,
-	const FReservedTiles& ReservedTiles,
 	int32 Radius,
 	int32 MaxAttempts
 )
@@ -2007,19 +2468,16 @@ FVector2D UAIPlayerManager::FindValidWanderTile(
 		return FVector2D(-1, -1);
 	}
 
-	// ========== 예약되지 않은 타일 찾기 (반복 시도) ==========
-	// 최대 시도 횟수(MaxAttempts)만큼 반복하여 예약되지 않은 배회 타일 찾기
+	// ========== 배회 타일 찾기 (반복 시도) ==========
+	// 최대 시도 횟수(MaxAttempts)만큼 반복하여 배회 타일 찾기
 	for (int32 Attempt = 0; Attempt < MaxAttempts; Attempt++)
 	{
 		// 유효한 타일 중 랜덤 선택
 		int32 RandomIndex = FMath::RandRange(0, ValidTiles.Num() - 1);
 		FVector2D CandidateTile = ValidTiles[RandomIndex];
 		
-		// 예약되지 않은 타일이면 반환
-		if (!ReservedTiles.Contains(CandidateTile))
-		{
-			return CandidateTile;
-		}
+		// 유효한 타일이면 반환
+		return CandidateTile;
 	}
 
 	// 모든 시도 실패 시 무효 좌표 반환

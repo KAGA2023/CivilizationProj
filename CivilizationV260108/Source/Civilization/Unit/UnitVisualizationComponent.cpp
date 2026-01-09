@@ -34,9 +34,15 @@ void UUnitVisualizationComponent::TickComponent(float DeltaTime, ELevelTick Tick
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
     // 이동 중이면 이동 업데이트
-    if (bIsMoving && IsMoving())
+    if (IsMoving())
     {
         UpdateMovement(DeltaTime);
+    }
+
+    // 전투 시각화용 이동 중이면 이동 업데이트
+    if (bIsCombatMoving)
+    {
+        UpdateCombatMovement(DeltaTime);
     }
 
     // 전투 시각화 중이면 전투 업데이트
@@ -203,16 +209,7 @@ void UUnitVisualizationComponent::MoveToNextTile()
     if (CurrentPathIndex >= CurrentMovementPath.Num())
     {
         // 이동 완료
-        // 전투 중이면 CompleteMovement 대신 bIsMoving만 false로 설정
-        // (전투 상태는 UpdateCombatVisualization에서 처리)
-        if (bIsInCombat)
-        {
-            bIsMoving = false;
-        }
-        else
-        {
-            CompleteMovement();
-        }
+        CompleteMovement();
         return;
     }
 
@@ -258,8 +255,17 @@ void UUnitVisualizationComponent::CheckAndExecuteJump()
         return;
     }
 
-    // 현재 목표 타일
-    FVector2D CurrentTargetHex = CurrentMovementPath[CurrentPathIndex];
+    // 현재 목표 타일 (경로가 있으면 경로에서, 없으면 월드 위치에서 가져오기)
+    FVector2D CurrentTargetHex = FVector2D::ZeroVector;
+    if (CurrentMovementPath.Num() > 0 && CurrentPathIndex < CurrentMovementPath.Num())
+    {
+        CurrentTargetHex = CurrentMovementPath[CurrentPathIndex];
+    }
+    else
+    {
+        // 경로가 없으면 월드 위치에서 헥스 좌표 가져오기 (전투 시각화용)
+        CurrentTargetHex = WorldComponent->WorldToHex(CurrentTargetWorldPosition);
+    }
 
     // 현재 위치와 목표 위치
     FVector CurrentPosition = Unit->GetActorLocation();
@@ -334,17 +340,163 @@ void UUnitVisualizationComponent::CheckAndExecuteJump()
     }
 }
 
+// ================= 전투 시각화 전용 이동 =================
+
+void UUnitVisualizationComponent::StartCombatMovement(const FVector& TargetWorldPosition)
+{
+    AUnitCharacterBase* Unit = Cast<AUnitCharacterBase>(GetOwner());
+    if (!Unit)
+    {
+        return;
+    }
+
+    // 기존 전투 이동 중지
+    StopCombatMovement();
+
+    // 목표 위치 설정 및 이동 시작
+    CombatTargetWorldPosition = TargetWorldPosition;
+
+    // 점프 로직(일반 이동용 CheckAndExecuteJump)을 재사용하기 위해
+    // 전투 이동의 목표도 CurrentTargetWorldPosition에 반영
+    CurrentTargetWorldPosition = TargetWorldPosition;
+
+    // 전투 이동 시작 시 점프 기록 초기화 (같은 타일에서도 다시 점프 가능하도록)
+    LastJumpedTargetHex = FVector2D(-1, -1);
+
+    bIsCombatMoving = true;
+    
+    UE_LOG(LogTemp, Warning, TEXT("StartCombatMovement: TargetPos=(%f, %f, %f)"), 
+        TargetWorldPosition.X, TargetWorldPosition.Y, TargetWorldPosition.Z);
+}
+
+void UUnitVisualizationComponent::UpdateCombatMovement(float DeltaTime)
+{
+    AUnitCharacterBase* Unit = Cast<AUnitCharacterBase>(GetOwner());
+    if (!Unit)
+    {
+        StopCombatMovement();
+        return;
+    }
+
+    // 현재 위치와 목표 위치
+    FVector CurrentPosition = Unit->GetActorLocation();
+    FVector TargetPosition = CombatTargetWorldPosition;
+
+    // 목표까지의 방향 벡터
+    FVector Direction = (TargetPosition - CurrentPosition).GetSafeNormal();
+    
+    // Z축은 무시 (평면 이동만)
+    Direction.Z = 0.0f;
+    Direction.Normalize();
+
+    // 전투 이동 중에는 공격자/방어자 타일 비교로 점프 체크
+    if (bIsInCombat && CombatAttacker.IsValid() && CombatDefender.IsValid())
+    {
+        AUnitCharacterBase* OwnerUnit = Cast<AUnitCharacterBase>(GetOwner());
+        AUnitCharacterBase* Attacker = CombatAttacker.Get();
+        
+        // 공격자인 경우
+        if (OwnerUnit == Attacker)
+        {
+            // 복귀 중인지 확인
+            bool bIsReturning = (CombatState == ECombatVisualizationState::ReturningToOrigin || 
+                                 CombatState == ECombatVisualizationState::ReturningToOrigin_Ranged);
+            
+            // 거리가 가까워졌을 때 점프 시도 (일반 이동의 거리 조건 참고)
+            float Distance = FVector2D::Distance(
+                FVector2D(CurrentPosition.X, CurrentPosition.Y),
+                FVector2D(TargetPosition.X, TargetPosition.Y)
+            );
+            
+            // 목표에 가까워졌을 때만 점프 체크 (중복 점프 방지)
+            if (Distance <= JumpStartDistance && Distance > JumpMinDistance)
+            {
+                if (bIsReturning)
+                {
+                    // 복귀 중: 현재 위치와 원래 위치 비교
+                    FVector2D CurrentHex = WorldComponent->WorldToHex(CurrentPosition);
+                    FVector2D OriginHex = AttackerOriginalHexPosition;
+                    CheckAndExecuteCombatJump(CurrentHex, OriginHex);
+                }
+                else
+                {
+                    // 방어자로 이동 중: 공격자 원래 위치와 방어자 위치 비교
+                    FVector2D AttackerHex = AttackerOriginalHexPosition;
+                    FVector2D DefenderHex = DefenderHexPosition;
+                    CheckAndExecuteCombatJump(AttackerHex, DefenderHex);
+                }
+            }
+        }
+        else
+        {
+            // 일반 이동 로직 사용
+            CheckAndExecuteJump();
+        }
+    }
+    else
+    {
+        // 일반 이동 로직 사용
+        CheckAndExecuteJump();
+    }
+
+    // 이동 입력 적용
+    if (UCharacterMovementComponent* MoveComp = Unit->GetCharacterMovement())
+    {
+        // 이동 속도 설정
+        MoveComp->MaxWalkSpeed = MovementSpeed;
+
+        // 이동 입력 적용
+        Unit->AddMovementInput(Direction, 1.0f);
+    }
+
+    // 목표 도착 체크
+    if (HasReachedCombatTarget())
+    {
+        StopCombatMovement();
+    }
+}
+
+void UUnitVisualizationComponent::StopCombatMovement()
+{
+    bIsCombatMoving = false;
+    CombatTargetWorldPosition = FVector::ZeroVector;
+
+    // Character의 이동 중지
+    AUnitCharacterBase* Unit = Cast<AUnitCharacterBase>(GetOwner());
+    if (Unit)
+    {
+        if (UCharacterMovementComponent* MoveComp = Unit->GetCharacterMovement())
+        {
+            MoveComp->StopMovementImmediately();
+        }
+    }
+}
+
+bool UUnitVisualizationComponent::HasReachedCombatTarget() const
+{
+    AUnitCharacterBase* Unit = Cast<AUnitCharacterBase>(GetOwner());
+    if (!Unit)
+    {
+        return true;
+    }
+
+    FVector CurrentPosition = Unit->GetActorLocation();
+    FVector TargetPosition = CombatTargetWorldPosition;
+
+    // Z축은 무시하고 평면 거리만 계산
+    FVector2D CurrentPos2D(CurrentPosition.X, CurrentPosition.Y);
+    FVector2D TargetPos2D(TargetPosition.X, TargetPosition.Y);
+    
+    float Distance = FVector2D::Distance(CurrentPos2D, TargetPos2D);
+
+    return Distance <= ArrivalDistance;
+}
+
 // ================= 전투 시각화 구현 =================
 
 void UUnitVisualizationComponent::StartCombatVisualization(AUnitCharacterBase* Attacker, AUnitCharacterBase* Defender, const FCombatResult& CombatResult)
 {
     if (!Attacker || !Defender || !WorldComponent)
-    {
-        return;
-    }
-
-    // 이미 전투 중이면 무시
-    if (bIsInCombat)
     {
         return;
     }
@@ -416,6 +568,19 @@ void UUnitVisualizationComponent::StartCombatVisualization(AUnitCharacterBase* A
     // ========== 4. 방어자 컴포넌트 초기화 ==========
     if (UUnitVisualizationComponent* DefenderVisComp = Defender->GetUnitVisualizationComponent())
     {
+        // 방어자가 이미 전투 중이면 기존 전투를 먼저 완료 처리
+        // (연속 공격 시 이전 전투의 완료 알림이 누락되는 것을 방지)
+        if (DefenderVisComp->bIsInCombat && DefenderVisComp->CombatAttacker.IsValid())
+        {
+            // 기존 전투의 공격자 컴포넌트 찾기
+            AUnitCharacterBase* PreviousAttacker = DefenderVisComp->CombatAttacker.Get();
+            if (UUnitVisualizationComponent* PreviousAttackerVisComp = PreviousAttacker->GetUnitVisualizationComponent())
+            {
+                // 기존 전투 완료 처리 (전투 완료 알림 포함)
+                PreviousAttackerVisComp->CompleteCombatVisualization();
+            }
+        }
+
         // WorldComponent 설정 (없으면)
         if (!DefenderVisComp->GetWorldComponent())
         {
@@ -530,9 +695,9 @@ void UUnitVisualizationComponent::UpdateCombatVisualization(float DeltaTime)
         case ECombatVisualizationState::MovingToDefender:
         {
             // 공격자가 방어자 타일로 이동 중
-            // 이동 완료는 HasReachedTarget()에서 체크되어 MoveToNextTile() 호출
+            // 이동 완료는 HasReachedCombatTarget()에서 체크되어 StopCombatMovement() 호출
             // 여기서는 이동 완료 후 상태 전환만 처리
-            if (!bIsMoving)
+            if (!bIsCombatMoving)
             {
                 // 이동 완료 - 공격 애니메이션 시작
                 CombatState = ECombatVisualizationState::AttackerAttack;
@@ -618,8 +783,8 @@ void UUnitVisualizationComponent::UpdateCombatVisualization(float DeltaTime)
         case ECombatVisualizationState::ReturningToOrigin_Ranged:
         {
             // 공격자 또는 방어자 복귀 중 (원거리)
-            // 이동 완료는 HasReachedTarget()에서 체크되어 MoveToNextTile() 호출
-            if (!bIsMoving)
+            // 이동 완료는 HasReachedCombatTarget()에서 체크되어 StopCombatMovement() 호출
+            if (!bIsCombatMoving)
             {
                 // 복귀 완료 처리
                 // 공격자인지 방어자인지 확인
@@ -647,22 +812,101 @@ void UUnitVisualizationComponent::UpdateCombatVisualization(float DeltaTime)
 
 void UUnitVisualizationComponent::StartMovingToDefender()
 {
+    UE_LOG(LogTemp, Warning, TEXT("StartMovingToDefender() 호출됨"));
+    
     AUnitCharacterBase* OwnerUnit = Cast<AUnitCharacterBase>(GetOwner());
     if (!OwnerUnit || !WorldComponent || !CombatDefender.IsValid())
     {
         return;
     }
 
-    // 공격자 현재 위치
-    FVector2D AttackerHex = AttackerOriginalHexPosition;
+    // 공격자와 방어자의 실제 월드 좌표 가져오기
+    FVector AttackerWorldPos = AttackerOriginalWorldPosition;
+    FVector DefenderWorldPos = DefenderWorldPosition;
 
-    // 방어자 타일로 이동 경로 생성 (단일 타일 이동)
-    TArray<FVector2D> PathToDefender;
-    PathToDefender.Add(AttackerHex);
-    PathToDefender.Add(DefenderHexPosition);
+    // 방어자로부터 공격자 방향 벡터 계산
+    FVector DirectionToAttacker = (AttackerWorldPos - DefenderWorldPos).GetSafeNormal();
+    
+    // 방어자로부터 20.0f 떨어진 목표 위치 계산
+    FVector TargetWorldPosition = DefenderWorldPos + DirectionToAttacker * 20.0f;
+    
+    // 전투 시각화 전용 이동 시작
+    StartCombatMovement(TargetWorldPosition);
+}
 
-    // 이동 시작 (기존 이동 함수 재사용)
-    StartMovementAlongPath(PathToDefender);
+void UUnitVisualizationComponent::CheckAndExecuteCombatJump(FVector2D FromHex, FVector2D ToHex)
+{
+    if (!WorldComponent)
+    {
+        return;
+    }
+
+    AUnitCharacterBase* Unit = Cast<AUnitCharacterBase>(GetOwner());
+    if (!Unit)
+    {
+        return;
+    }
+
+    // 헥스 좌표를 정수로 반올림 (GetTileAtHex는 정수 좌표를 기대함)
+    FVector2D FromHexRounded = FVector2D(FMath::RoundToInt(FromHex.X), FMath::RoundToInt(FromHex.Y));
+    FVector2D ToHexRounded = FVector2D(FMath::RoundToInt(ToHex.X), FMath::RoundToInt(ToHex.Y));
+
+    // 중복 점프 방지 (이미 이 타일로 점프했으면 다시 점프하지 않음)
+    if (LastJumpedTargetHex == ToHexRounded)
+    {
+        return;
+    }
+
+    UWorldTile* CurrentTile = WorldComponent->GetTileAtHex(FromHexRounded);
+    UWorldTile* TargetTile  = WorldComponent->GetTileAtHex(ToHexRounded);
+
+    if (!CurrentTile || !TargetTile)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("CheckAndExecuteCombatJump: 타일을 찾을 수 없음 - FromHex=(%f, %f)->(%f, %f), ToHex=(%f, %f)->(%f, %f)"), 
+            FromHex.X, FromHex.Y, FromHexRounded.X, FromHexRounded.Y, ToHex.X, ToHex.Y, ToHexRounded.X, ToHexRounded.Y);
+        return;
+    }
+
+    ELandType CurrentLandType = CurrentTile->GetLandType();
+    ELandType TargetLandType  = TargetTile->GetLandType();
+
+    UE_LOG(LogTemp, Warning, TEXT("CheckAndExecuteCombatJump: FromHex=(%f, %f)->(%f, %f) LandType=%d, ToHex=(%f, %f)->(%f, %f) LandType=%d"), 
+        FromHex.X, FromHex.Y, FromHexRounded.X, FromHexRounded.Y, (int32)CurrentLandType, 
+        ToHex.X, ToHex.Y, ToHexRounded.X, ToHexRounded.Y, (int32)TargetLandType);
+
+    // 점프 조건: 평지 → 언덕, 언덕 → 산 (일반 이동 로직과 동일)
+    bool bShouldJump = false;
+    if (CurrentLandType == ELandType::Plains && TargetLandType == ELandType::Hills)
+    {
+        bShouldJump = true;
+        UE_LOG(LogTemp, Warning, TEXT("CheckAndExecuteCombatJump: 평지→언덕 점프 조건 만족"));
+    }
+    else if (CurrentLandType == ELandType::Hills && TargetLandType == ELandType::Mountains)
+    {
+        bShouldJump = true;
+        UE_LOG(LogTemp, Warning, TEXT("CheckAndExecuteCombatJump: 언덕→산 점프 조건 만족"));
+    }
+
+    if (!bShouldJump)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("CheckAndExecuteCombatJump: 점프 조건 불만족"));
+        return;
+    }
+
+    if (UCharacterMovementComponent* MoveComp = Unit->GetCharacterMovement())
+    {
+        if (!MoveComp->IsFalling() && MoveComp->CanAttemptJump())
+        {
+            UE_LOG(LogTemp, Warning, TEXT("CheckAndExecuteCombatJump: 점프 실행!"));
+            Unit->Jump();
+            LastJumpedTargetHex = ToHexRounded; // 점프 기록
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("CheckAndExecuteCombatJump: 점프 불가 - IsFalling=%d, CanAttemptJump=%d"), 
+                MoveComp->IsFalling(), MoveComp->CanAttemptJump());
+        }
+    }
 }
 
 void UUnitVisualizationComponent::UpdateDefenderRotation(float DeltaTime)
@@ -879,25 +1123,17 @@ void UUnitVisualizationComponent::StartReturningToOrigin()
     if (bIsAttacker)
     {
         // 반격으로 공격자는 죽을 수 없으므로 항상 복귀 수행
-        // 현재 위치에서 원래 위치로 이동
+        // 현재 위치(방어자 근처)와 원래 위치 비교해서 점프 체크
         FVector2D CurrentHex = WorldComponent->WorldToHex(OwnerUnit->GetActorLocation());
         FVector2D OriginHex = AttackerOriginalHexPosition;
+        CheckAndExecuteCombatJump(CurrentHex, OriginHex);
 
-        // 같은 타일이면 복귀 불필요
-        if (CurrentHex == OriginHex)
-        {
-            CompleteCombatVisualization();
-            return;
-        }
+        // 원래 위치의 월드 좌표 가져오기
+        FVector OriginWorldPosition = AttackerOriginalWorldPosition;
 
-        // 복귀 경로 생성
-        TArray<FVector2D> ReturnPath;
-        ReturnPath.Add(CurrentHex);
-        ReturnPath.Add(OriginHex);
-
-        // 복귀 상태 설정 및 이동 시작
+        // 복귀 상태 설정 및 전투 시각화 전용 이동 시작
         CombatState = ECombatVisualizationState::ReturningToOrigin;
-        StartMovementAlongPath(ReturnPath);
+        StartCombatMovement(OriginWorldPosition);
     }
     // 방어자인 경우
     else if (bIsDefender)
@@ -909,25 +1145,12 @@ void UUnitVisualizationComponent::StartReturningToOrigin()
             return;
         }
 
-        // 현재 위치에서 원래 위치로 이동
-        FVector2D CurrentHex = WorldComponent->WorldToHex(OwnerUnit->GetActorLocation());
-        FVector2D OriginHex = DefenderOriginalHexPosition;
+        // 원래 위치의 월드 좌표 가져오기
+        FVector OriginWorldPosition = DefenderOriginalWorldPosition;
 
-        // 같은 타일이면 복귀 불필요
-        if (CurrentHex == OriginHex)
-        {
-            StopCombatVisualization();
-            return;
-        }
-
-        // 복귀 경로 생성
-        TArray<FVector2D> ReturnPath;
-        ReturnPath.Add(CurrentHex);
-        ReturnPath.Add(OriginHex);
-
-        // 복귀 상태 설정 및 이동 시작
+        // 복귀 상태 설정 및 전투 시각화 전용 이동 시작
         CombatState = ECombatVisualizationState::ReturningToOrigin;
-        StartMovementAlongPath(ReturnPath);
+        StartCombatMovement(OriginWorldPosition);
     }
 }
 
@@ -1084,27 +1307,19 @@ void UUnitVisualizationComponent::OnMontageEnded(UAnimMontage* Montage, bool bIn
         case ECombatVisualizationState::DefenderDeath_Ranged:
         {
             // 방어자 피격/사망 애니메이션 종료 (원거리)
-            // 방어자가 죽었으면 destroy 처리 (OnCombatNotify_Death에서 이미 처리됨)
-            // 방어자가 살아있으면 복귀, 죽었으면 복귀 없음
-            if (CurrentCombatResult.bDefenderAlive)
+            // 원거리 전투는 이동이 없으므로 복귀 없이 바로 전투 완료 처리
+            // 이 함수는 방어자의 컴포넌트에서 호출되므로, 공격자의 컴포넌트를 찾아서 전투 완료 처리
+            if (CombatAttacker.IsValid())
             {
-                // 방어자가 살아있으면 복귀
-                StartReturningToOrigin_Ranged();
-            }
-            else
-            {
-                // 방어자가 죽었으면 복귀 없음 - 공격자만 복귀
-                if (CombatAttacker.IsValid())
+                AUnitCharacterBase* Attacker = CombatAttacker.Get();
+                if (UUnitVisualizationComponent* AttackerVisComp = Attacker->GetUnitVisualizationComponent())
                 {
-                    AUnitCharacterBase* Attacker = CombatAttacker.Get();
-                    if (UUnitVisualizationComponent* AttackerVisComp = Attacker->GetUnitVisualizationComponent())
-                    {
-                        AttackerVisComp->StartReturningToOrigin_Ranged();
-                    }
+                    // 공격자의 CompleteCombatVisualization 호출 (전투 완료 알림 포함)
+                    AttackerVisComp->CompleteCombatVisualization();
                 }
-                // 방어자 상태 초기화
-                StopCombatVisualization();
             }
+            // 방어자 상태 초기화
+            StopCombatVisualization();
             break;
         }
 
@@ -1465,25 +1680,17 @@ void UUnitVisualizationComponent::StartReturningToOrigin_Ranged()
     // 공격자인 경우
     if (bIsAttacker)
     {
-        // 현재 위치에서 원래 위치로 이동
+        // 현재 위치(방어자 근처)와 원래 위치 비교해서 점프 체크
         FVector2D CurrentHex = WorldComponent->WorldToHex(OwnerUnit->GetActorLocation());
         FVector2D OriginHex = AttackerOriginalHexPosition;
+        CheckAndExecuteCombatJump(CurrentHex, OriginHex);
 
-        // 같은 타일이면 복귀 불필요
-        if (CurrentHex == OriginHex)
-        {
-            CompleteCombatVisualization();
-            return;
-        }
+        // 원래 위치의 월드 좌표 가져오기
+        FVector OriginWorldPosition = AttackerOriginalWorldPosition;
 
-        // 복귀 경로 생성
-        TArray<FVector2D> ReturnPath;
-        ReturnPath.Add(CurrentHex);
-        ReturnPath.Add(OriginHex);
-
-        // 복귀 상태 설정 및 이동 시작
+        // 복귀 상태 설정 및 전투 시각화 전용 이동 시작
         CombatState = ECombatVisualizationState::ReturningToOrigin_Ranged;
-        StartMovementAlongPath(ReturnPath);
+        StartCombatMovement(OriginWorldPosition);
     }
     // 방어자인 경우
     else if (bIsDefender)
@@ -1495,25 +1702,12 @@ void UUnitVisualizationComponent::StartReturningToOrigin_Ranged()
             return;
         }
 
-        // 현재 위치에서 원래 위치로 이동
-        FVector2D CurrentHex = WorldComponent->WorldToHex(OwnerUnit->GetActorLocation());
-        FVector2D OriginHex = DefenderOriginalHexPosition;
+        // 원래 위치의 월드 좌표 가져오기
+        FVector OriginWorldPosition = DefenderOriginalWorldPosition;
 
-        // 같은 타일이면 복귀 불필요
-        if (CurrentHex == OriginHex)
-        {
-            StopCombatVisualization();
-            return;
-        }
-
-        // 복귀 경로 생성
-        TArray<FVector2D> ReturnPath;
-        ReturnPath.Add(CurrentHex);
-        ReturnPath.Add(OriginHex);
-
-        // 복귀 상태 설정 및 이동 시작
+        // 복귀 상태 설정 및 전투 시각화 전용 이동 시작
         CombatState = ECombatVisualizationState::ReturningToOrigin_Ranged;
-        StartMovementAlongPath(ReturnPath);
+        StartCombatMovement(OriginWorldPosition);
     }
 }
 

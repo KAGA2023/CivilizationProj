@@ -233,11 +233,6 @@ private:
     UPROPERTY()
     TMap<FVector2D, class AUnitCharacterBase*> HexToUnitMap;
 
-    // 이동 중인 유닛들의 목적지 예약
-    // 한 타일에 여러 유닛이 겹치지 않도록, 도착 예정 타일까지 포함해 관리
-    UPROPERTY()
-    TMap<FVector2D, TWeakObjectPtr<class AUnitCharacterBase>> ReservedDestinations;
-
     // 이동용 2단계 선택 시스템
     UPROPERTY()
     class UWorldTile* MoveFirstSelectedTile = nullptr; // 첫 번째 선택된 이동 유닛 타일

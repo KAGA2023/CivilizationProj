@@ -90,6 +90,10 @@ protected:
 	void ProcessCityProductionState(int32 PlayerIndex);
 	void ProcessTilePurchaseState(int32 PlayerIndex);
 	void ProcessFacilityState(int32 PlayerIndex);
+	void ProcessBuilderMovementState(int32 PlayerIndex);
+	void ProcessBuilderBuildState(int32 PlayerIndex);
+	void ProcessCombatUnitMovementState(int32 PlayerIndex);
+	void ProcessCombatUnitCombatState(int32 PlayerIndex);
 	void ProcessUnitMovementState(int32 PlayerIndex);
 
 	// ================= 상태 전환 =================
@@ -104,35 +108,13 @@ protected:
 	// AI 플레이어 새 턴 초기화
 	void ResetAIPlayerForNewTurn(FAIPlayerStruct& AIPlayer);
 
+	// 현재 라운드 번호 가져오기 (TurnComponent에서, 실패 시 기본값 1 반환)
+	int32 GetCurrentRound() const;
+
 	// ================= 유닛 이동 처리 함수 =================
-	
-	// 건설자 유닛 이동 처리
-	// 목표 시설 타일로 이동하거나 도착 시 시설 건설 시도, 실패 시 랜덤 배회
-	void ProcessBuilderUnitMovement(
-		int32 PlayerIndex,
-		FAIPlayerStruct* AIPlayer,
-		ASuperPlayerState* PlayerState,
-		USuperGameInstance* GameInstance,
-		UWorldComponent* WorldComponent,
-		UUnitManager* UnitManager,
-		const TArray<UWorldTile*>& AllTiles,
-		FReservedTiles& ReservedTiles
-	);
 
 	// 병사 유닛 이동 처리 (평화 상태)
 	// 전쟁 중이 아닐 때만 병사 유닛을 배회시킴
-	void ProcessCombatUnitsMovement(
-		int32 PlayerIndex,
-		FAIPlayerStruct* AIPlayer,
-		ASuperPlayerState* PlayerState,
-		USuperGameInstance* GameInstance,
-		UWorldComponent* WorldComponent,
-		UUnitManager* UnitManager,
-		const TArray<UWorldTile*>& AllTiles,
-		const TArray<AUnitCharacterBase*>& AllUnits,
-		FReservedTiles& ReservedTiles
-	);
-
 	// ================= 유닛 이동 헬퍼 함수 =================
 
 	// 유닛의 현재 위치 찾기
@@ -154,7 +136,6 @@ protected:
 	// @param StartPosition 시작 위치
 	// @param TargetTile 목표 타일
 	// @param UnitManager 유닛 매니저
-	// @param ReservedTiles 예약된 타일 집합 (참조로 수정됨)
 	// @param OutPendingMovements 대기 중인 이동 수 (참조로 증가됨)
 	// @return 이동 시작 성공 시 true, 실패 시 false
 	bool TryMoveUnitToTile(
@@ -162,20 +143,17 @@ protected:
 		FVector2D StartPosition,
 		FVector2D TargetTile,
 		UUnitManager* UnitManager,
-		FReservedTiles& ReservedTiles,
 		int32& OutPendingMovements
 	);
 
-	// 예약되지 않은 배회 타일 찾기
-	// 여러 번 시도하여 예약되지 않은 유효한 배회 타일을 찾음
+	// 배회 타일 찾기
+	// 여러 번 시도하여 유효한 배회 타일을 찾음
 	// @param PlayerIndex AI 플레이어 인덱스
-	// @param ReservedTiles 예약된 타일 집합
 	// @param Radius 도시 기준 반경 (기본값: 2)
 	// @param MaxAttempts 최대 시도 횟수 (기본값: 10)
 	// @return 유효한 배회 타일 좌표, 실패 시 FVector2D(-1, -1)
 	FVector2D FindValidWanderTile(
 		int32 PlayerIndex,
-		const FReservedTiles& ReservedTiles,
 		int32 Radius = 2,
 		int32 MaxAttempts = 10
 	);
@@ -214,27 +192,5 @@ protected:
 		UDiplomacyManager* DiplomacyManager
 	);
 
-	// 적 유닛으로 이동 및 공격 시도
-	// @param CombatUnit 병사 유닛
-	// @param CombatUnitPosition 병사 유닛의 현재 위치
-	// @param EnemyUnit 적 유닛
-	// @param EnemyPosition 적 유닛의 위치
-	// @param UnitManager 유닛 매니저
-	// @param WorldComponent 월드 컴포넌트
-	// @param ReservedTiles 예약된 타일 집합 (참조로 수정됨)
-	// @param OutPendingMovements 대기 중인 이동 수 (참조로 증가됨)
-	// @param OutPendingCombatActions 대기 중인 전투 액션 수 (참조로 증가됨)
-	// @return 성공 시 true, 실패 시 false
-	bool TryMoveAndAttackEnemy(
-		AUnitCharacterBase* CombatUnit,
-		FVector2D CombatUnitPosition,
-		AUnitCharacterBase* EnemyUnit,
-		FVector2D EnemyPosition,
-		UUnitManager* UnitManager,
-		UWorldComponent* WorldComponent,
-		FReservedTiles& ReservedTiles,
-		int32& OutPendingMovements,
-		int32& OutPendingCombatActions
-	);
 };
 

@@ -134,6 +134,30 @@ private:
     // 마지막으로 점프한 목표 타일 (중복 점프 방지)
     FVector2D LastJumpedTargetHex = FVector2D(-1, -1);
 
+    // ================= 전투 시각화 전용 이동 =================
+    
+    // 전투 시각화용 이동 시작 (월드 좌표 직접 지정)
+    void StartCombatMovement(const FVector& TargetWorldPosition);
+    
+    // 전투 시각화용 이동 업데이트
+    void UpdateCombatMovement(float DeltaTime);
+    
+    // 전투 시각화용 이동 중지
+    void StopCombatMovement();
+    
+    // 전투 시각화용 이동 중인지 확인
+    bool IsCombatMoving() const { return bIsCombatMoving; }
+    
+    // 전투 시각화용 이동 목표 도착 확인
+    bool HasReachedCombatTarget() const;
+
+    // 전투 시각화용 점프 체크 (공격자/방어자 타일 층수 비교)
+    void CheckAndExecuteCombatJump(FVector2D FromHex, FVector2D ToHex);
+
+    // 전투 시각화용 이동 상태
+    bool bIsCombatMoving = false;
+    FVector CombatTargetWorldPosition = FVector::ZeroVector;
+
     // ================= 전투 시각화 관련 변수 =================
 
     // 전투 상태 enum

@@ -6,17 +6,22 @@
 #include "AIPlayerStruct.generated.h"
 
 class ASuperPlayerState;
+class AUnitCharacterBase;
 
 UENUM(BlueprintType)
 enum class EAITurnState : uint8
 {
+    None                        UMETA(DisplayName = "None"),                           // 없음 (초기값)
     Idle                        UMETA(DisplayName = "Idle"),                           // 대기
     ProcessingDiplomacy         UMETA(DisplayName = "Processing Diplomacy"),           // 외교 처리
     ProcessingResearch          UMETA(DisplayName = "Processing Research"),            // 연구 처리
     ProcessingCityProduction    UMETA(DisplayName = "Processing City Production"),     // 도시 생산 처리
     ProcessingTilePurchase      UMETA(DisplayName = "Processing Tile Purchase"),       // 타일 구매 처리
     ProcessingFacility          UMETA(DisplayName = "Processing Facility"),            // 시설 건설 처리
-    ProcessingUnitMovement      UMETA(DisplayName = "Processing Unit Movement"),       // 유닛 이동 처리
+    ProcessingBuilderMovement   UMETA(DisplayName = "Processing Builder Movement"),     // 건설자 이동 처리
+    ProcessingBuilderBuild      UMETA(DisplayName = "Processing Builder Build"),        // 건설자 시설 건설 처리
+    ProcessingCombatUnitMovement UMETA(DisplayName = "Processing Combat Unit Movement"), // 병사 유닛 이동 처리
+    ProcessingCombatUnitCombat  UMETA(DisplayName = "Processing Combat Unit Combat"),    // 병사 유닛 전투 처리
     WaitingForAsync             UMETA(DisplayName = "Waiting For Async"),              // 비동기 대기
     TurnComplete                UMETA(DisplayName = "Turn Complete")                   // 턴 완료
 };
@@ -68,6 +73,20 @@ struct CIVILIZATION_API FAIPlayerStruct
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Facility")
     FVector2D TargetFacilityTile = FVector2D(-1, -1); // 건설자가 이동할 목표 타일 위치 (-1, -1이면 미설정)
 
+    // ========== 비동기 작업 후 상태 추적 ==========
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "State Machine")
+    EAITurnState PendingPostAsyncState = EAITurnState::None; // 비동기 작업 완료 후 이동할 상태 (None이면 TurnComplete)
+
+    // ========== 병사 유닛 순차 처리 추적 ==========
+    UPROPERTY()
+    TArray<TWeakObjectPtr<AUnitCharacterBase>> CombatUnitsQueue; // 처리할 병사 유닛 큐
+
+    UPROPERTY()
+    int32 CurrentCombatUnitIndex = 0; // 현재 처리 중인 병사 유닛 인덱스
+
+    UPROPERTY()
+    bool bIsProcessingCombatUnit = false; // 현재 병사 유닛 처리 중인지 여부
+
     // ========== 생성자 ==========
     FAIPlayerStruct()
     {
@@ -79,6 +98,9 @@ struct CIVILIZATION_API FAIPlayerStruct
         PendingCombatActions = 0;
         LastProductionType = EAILastProductionType::None;
         TargetFacilityTile = FVector2D(-1, -1);
+        PendingPostAsyncState = EAITurnState::None;
+        CurrentCombatUnitIndex = 0;
+        bIsProcessingCombatUnit = false;
     }
 };
 
@@ -112,40 +134,4 @@ struct CIVILIZATION_API FTileWithTotalYield
     }
 };
 
-// ========== 예약된 타일 추적 구조체 ==========
-USTRUCT(BlueprintType)
-struct CIVILIZATION_API FReservedTiles
-{
-    GENERATED_BODY()
-
-    // 실제 예약된 타일 집합
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Reserved Tiles")
-    TSet<FVector2D> ReservedTileSet;
-
-    // ========== 생성자 ==========
-    FReservedTiles()
-    {
-        ReservedTileSet.Empty();
-    }
-
-    // ========== 타일 예약 관리 함수 ==========
-
-    // 타일 예약 추가
-    void Add(const FVector2D& Tile);
-
-    // 타일 예약 제거
-    void Remove(const FVector2D& Tile);
-
-    // 타일 예약 여부 확인
-    bool Contains(const FVector2D& Tile) const;
-
-    // 예약된 타일 수 반환
-    int32 Num() const;
-
-    // 모든 예약 해제
-    void Clear();
-
-    // 예약된 타일이 없으면 true
-    bool IsEmpty() const;
-};
 

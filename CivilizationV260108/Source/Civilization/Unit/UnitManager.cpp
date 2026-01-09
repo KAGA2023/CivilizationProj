@@ -265,26 +265,6 @@ bool UUnitManager::CanPlaceUnitAtHex(FVector2D HexPosition, AUnitCharacterBase* 
     {
         return false;
     }
-
-    // 다른 유닛이 해당 타일을 목적지로 예약했는지 확인
-    if (const TWeakObjectPtr<AUnitCharacterBase>* FoundReservation = ReservedDestinations.Find(HexPosition))
-    {
-        if (FoundReservation->IsValid())
-        {
-            // MovingUnit이 지정되었고, 예약한 유닛이 자기 자신이면 허용
-            if (MovingUnit && *FoundReservation == MovingUnit)
-            {
-                // 자기 자신의 예약은 무시
-            }
-            else
-            {
-                // 다른 유닛이 이 타일로 이동 중이면 배치 불가
-                return false;
-            }
-        }
-        // 예약된 유닛이 이미 파괴되었으면 예약 정리
-        // (const 함수라 캐스트로 정리하는 것은 위험하니, 호출 측에서 주기적으로 정리해도 됨)
-    }
     
     // 타일이 존재하고 이동 가능한지 확인
     UWorldTile* Tile = WorldComponent->GetTileAtHex(HexPosition);
@@ -789,32 +769,11 @@ void UUnitManager::StartVisualMovement(AUnitCharacterBase* Unit, const TArray<FV
     FVector2D DestinationHex = Path[Path.Num() - 1];
     
     // 이동 시작 직전에 목적지 타일이 여전히 사용 가능한지 최종 확인
-    // (경로를 찾은 후 다른 유닛이 같은 타일을 예약했을 수 있음)
-    // 자기 자신의 예약은 무시하도록 MovingUnit 파라미터 전달
     if (!CanPlaceUnitAtHex(DestinationHex, Unit))
     {
         // 목적지가 더 이상 사용 불가능하면 이동 취소
         return;
     }
-    
-    // 예약 추가 (원자적 연산처럼 동작하도록)
-    // 이미 예약이 있는 경우는 위의 CanPlaceUnitAtHex에서 걸러졌으므로 안전
-    ReservedDestinations.Add(DestinationHex, Unit);
-    
-    // 예약 추가 후 다시 한 번 확인 (다른 유닛이 동시에 예약했을 수 있음)
-    // 이번에는 자기 자신의 예약이 있으므로 MovingUnit을 전달하여 자기 예약은 무시
-    if (!CanPlaceUnitAtHex(DestinationHex, Unit))
-    {
-        // 다른 유닛이 동시에 예약했으면 예약 취소하고 이동 중단
-        ReservedDestinations.Remove(DestinationHex);
-        return;
-    }
-    
-    // 예약 후 다시 한 번 확인 (다른 유닛이 동시에 예약했을 수 있음)
-    // 하지만 이미 예약을 추가했으므로, 자기 자신의 예약은 허용해야 함
-    // CanPlaceUnitAtHex는 자기 자신 예약을 고려하지 않으므로, 
-    // 예약 추가 후 다시 체크하면 자기 자신 때문에 false가 될 수 있음
-    // 따라서 예약 추가 전 체크만으로 충분
     
     // 전체 경로의 이동 비용 계산 및 소비
     // FindPathWithMovementCost()에서 이미 이동력 제한으로 경로를 잘랐으므로,
@@ -871,10 +830,6 @@ void UUnitManager::OnUnitMovementComplete(AUnitCharacterBase* Unit, FVector2D Fi
     {
         return;
     }
-    
-    // 이동이 끝났으므로 목적지 예약 해제
-    // (예약이 없더라도 Remove는 안전)
-    ReservedDestinations.Remove(FinalHex);
     
     // 이동 완료 후 최종 위치에 유닛 등록
     // (이동 중에는 위치 정보가 불일치하지 않도록 완료 후에만 등록)
