@@ -470,6 +470,22 @@ void UAIPlayerManager::OnCombatActionFinished(int32 PlayerIndex)
 		// WaitingForAsync 상태에서 PendingPostAsyncState로 넘어가버릴 수 있음
 		// 따라서 직접 ProcessCombatUnitCombatState()를 호출하여 다음 유닛 처리
 		ProcessCombatUnitCombatState(PlayerIndex);
+		
+		// 중요: 모든 전투가 완료되었는지 확인
+		// PendingCombatActions가 0이고, 모든 유닛 처리가 완료되었으면 상태 머신 업데이트
+		if (AIPlayer->PendingCombatActions == 0 && 
+			AIPlayer->CurrentCombatUnitIndex >= AIPlayer->CombatUnitsQueue.Num())
+		{
+			// 모든 전투 완료
+			AIPlayer->bIsProcessingCombatUnit = false;
+			AIPlayer->CurrentCombatUnitIndex = 0;
+			AIPlayer->CombatUnitsQueue.Empty();
+			
+			// 다음 상태로 전환
+			TransitionToNextState(PlayerIndex);
+			UpdateStateMachine(PlayerIndex);
+		}
+		
 		return; // 여기서 종료, ProcessCombatUnitCombatState에서 처리
 	}
 	// 턴이 활성화되어 있고, 비동기 작업이 없으면 상태 머신 업데이트

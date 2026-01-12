@@ -210,6 +210,10 @@ private:
     FVector2D DefenderHexPosition = FVector2D::ZeroVector;
     FVector DefenderWorldPosition = FVector::ZeroVector;
 
+    // 복귀 완료 추적 (원거리 전투 전용, 공격자 컴포넌트에서만 사용)
+    bool bAttackerReturned = false;
+    bool bDefenderReturned = false;
+
     // 회전 관련 설정
     UPROPERTY(EditDefaultsOnly, Category = "Combat Settings")
     float RotationSpeed = 360.0f; // 회전 속도 (도/초)
@@ -230,26 +234,6 @@ private:
     // 현재 재생 중인 몽타주
     UPROPERTY()
     UAnimMontage* CurrentPlayingMontage = nullptr;
-
-    // ================= 프로젝타일 관련 변수 =================
-    
-    // 프로젝타일 액터 참조
-    UPROPERTY()
-    TWeakObjectPtr<class AActor> ProjectileActor = nullptr;
-    
-    // 프로젝타일 발사 위치 (공격자의 무기/손 위치)
-    FVector ProjectileSpawnLocation = FVector::ZeroVector;
-    
-    // 프로젝타일 목표 위치 (방어자의 위치)
-    FVector ProjectileTargetLocation = FVector::ZeroVector;
-    
-    // 프로젝타일 이동 속도
-    UPROPERTY(EditDefaultsOnly, Category = "Ranged Combat Settings")
-    float ProjectileSpeed = 2000.0f; // 프로젝타일 이동 속도
-    
-    // 프로젝타일 도착 판정 거리
-    UPROPERTY(EditDefaultsOnly, Category = "Ranged Combat Settings")
-    float ProjectileArrivalDistance = 50.0f; // 프로젝타일 도착 판정 거리
 
     // ================= 내부 함수 =================
 
@@ -309,8 +293,14 @@ private:
     // 공격자/방어자 원래 위치로 복귀 (원거리)
     void StartReturningToOrigin_Ranged();
 
-    // 전투 완료 처리
-    void CompleteCombatVisualization();
+    // 근거리 전투 완료 처리 (CivilizationShort 방식: 즉시 완료 알림)
+    void CompleteMeleeCombatVisualization();
+
+    // 원거리 전투 완료 처리 (CivilizationRanged 방식: 복귀 완료 확인 후 알림)
+    void CompleteRangedCombatVisualization();
+
+    // 원거리 전투 복귀 완료 확인 후 알림 (원거리 전용)
+    void CheckAndNotifyRangedCombatComplete();
 
     // 몽타주 재생 (공통 함수)
     void PlayMontage(UAnimMontage* Montage, AUnitCharacterBase* TargetUnit);

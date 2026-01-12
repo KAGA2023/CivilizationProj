@@ -72,7 +72,7 @@ AUnitCharacterBase::AUnitCharacterBase()
         MoveComp->bUseControllerDesiredRotation = false; // MovementComponent가 회전 제어
         
         // 점프 설정
-        MoveComp->JumpZVelocity = 1000.0f; // 점프 속도 설정
+        MoveComp->JumpZVelocity = 1300.0f; // 점프 속도 설정
         MoveComp->bCanWalkOffLedges = true; // 절벽에서 떨어질 수 있도록
         MoveComp->bCanWalkOffLedgesWhenCrouching = true;
         

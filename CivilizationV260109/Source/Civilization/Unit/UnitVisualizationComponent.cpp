@@ -364,9 +364,6 @@ void UUnitVisualizationComponent::StartCombatMovement(const FVector& TargetWorld
     LastJumpedTargetHex = FVector2D(-1, -1);
 
     bIsCombatMoving = true;
-    
-    UE_LOG(LogTemp, Warning, TEXT("StartCombatMovement: TargetPos=(%f, %f, %f)"), 
-        TargetWorldPosition.X, TargetWorldPosition.Y, TargetWorldPosition.Z);
 }
 
 void UUnitVisualizationComponent::UpdateCombatMovement(float DeltaTime)
@@ -568,19 +565,6 @@ void UUnitVisualizationComponent::StartCombatVisualization(AUnitCharacterBase* A
     // ========== 4. 방어자 컴포넌트 초기화 ==========
     if (UUnitVisualizationComponent* DefenderVisComp = Defender->GetUnitVisualizationComponent())
     {
-        // 방어자가 이미 전투 중이면 기존 전투를 먼저 완료 처리
-        // (연속 공격 시 이전 전투의 완료 알림이 누락되는 것을 방지)
-        if (DefenderVisComp->bIsInCombat && DefenderVisComp->CombatAttacker.IsValid())
-        {
-            // 기존 전투의 공격자 컴포넌트 찾기
-            AUnitCharacterBase* PreviousAttacker = DefenderVisComp->CombatAttacker.Get();
-            if (UUnitVisualizationComponent* PreviousAttackerVisComp = PreviousAttacker->GetUnitVisualizationComponent())
-            {
-                // 기존 전투 완료 처리 (전투 완료 알림 포함)
-                PreviousAttackerVisComp->CompleteCombatVisualization();
-            }
-        }
-
         // WorldComponent 설정 (없으면)
         if (!DefenderVisComp->GetWorldComponent())
         {
@@ -739,12 +723,12 @@ void UUnitVisualizationComponent::UpdateCombatVisualization(float DeltaTime)
 
                 if (bIsAttacker)
                 {
-                    // 공격자 복귀 완료 - 전투 완료
-                    CompleteCombatVisualization();
+                    // 근거리 전투: 공격자 복귀 완료 시 즉시 전투 완료 (CivilizationShort 방식)
+                    CompleteMeleeCombatVisualization();
                 }
                 else if (bIsDefender)
                 {
-                    // 방어자 복귀 완료 - 전투 상태 초기화
+                    // 방어자 복귀 완료 - 전투 상태 초기화만 수행 (알림은 공격자에서 처리)
                     StopCombatVisualization();
                 }
             }
@@ -793,12 +777,22 @@ void UUnitVisualizationComponent::UpdateCombatVisualization(float DeltaTime)
 
                 if (bIsAttacker)
                 {
-                    // 공격자 복귀 완료 - 전투 완료
-                    CompleteCombatVisualization();
+                    // 원거리 전투: 복귀 완료 플래그 설정 후 확인 (CivilizationRanged 방식)
+                    bAttackerReturned = true;
+                    CheckAndNotifyRangedCombatComplete();
                 }
                 else if (bIsDefender)
                 {
-                    // 방어자 복귀 완료 - 전투 상태 초기화
+                    // 방어자 복귀 완료 - 공격자 컴포넌트에 알림
+                    if (CombatAttacker.IsValid())
+                    {
+                        if (UUnitVisualizationComponent* AttackerVisComp = CombatAttacker->GetUnitVisualizationComponent())
+                        {
+                            AttackerVisComp->bDefenderReturned = true;
+                            AttackerVisComp->CheckAndNotifyRangedCombatComplete();
+                        }
+                    }
+                    // 방어자 자신은 전투 상태 초기화
                     StopCombatVisualization();
                 }
             }
@@ -812,8 +806,6 @@ void UUnitVisualizationComponent::UpdateCombatVisualization(float DeltaTime)
 
 void UUnitVisualizationComponent::StartMovingToDefender()
 {
-    UE_LOG(LogTemp, Warning, TEXT("StartMovingToDefender() 호출됨"));
-    
     AUnitCharacterBase* OwnerUnit = Cast<AUnitCharacterBase>(GetOwner());
     if (!OwnerUnit || !WorldComponent || !CombatDefender.IsValid())
     {
@@ -862,34 +854,25 @@ void UUnitVisualizationComponent::CheckAndExecuteCombatJump(FVector2D FromHex, F
 
     if (!CurrentTile || !TargetTile)
     {
-        UE_LOG(LogTemp, Warning, TEXT("CheckAndExecuteCombatJump: 타일을 찾을 수 없음 - FromHex=(%f, %f)->(%f, %f), ToHex=(%f, %f)->(%f, %f)"), 
-            FromHex.X, FromHex.Y, FromHexRounded.X, FromHexRounded.Y, ToHex.X, ToHex.Y, ToHexRounded.X, ToHexRounded.Y);
         return;
     }
 
     ELandType CurrentLandType = CurrentTile->GetLandType();
     ELandType TargetLandType  = TargetTile->GetLandType();
 
-    UE_LOG(LogTemp, Warning, TEXT("CheckAndExecuteCombatJump: FromHex=(%f, %f)->(%f, %f) LandType=%d, ToHex=(%f, %f)->(%f, %f) LandType=%d"), 
-        FromHex.X, FromHex.Y, FromHexRounded.X, FromHexRounded.Y, (int32)CurrentLandType, 
-        ToHex.X, ToHex.Y, ToHexRounded.X, ToHexRounded.Y, (int32)TargetLandType);
-
     // 점프 조건: 평지 → 언덕, 언덕 → 산 (일반 이동 로직과 동일)
     bool bShouldJump = false;
     if (CurrentLandType == ELandType::Plains && TargetLandType == ELandType::Hills)
     {
         bShouldJump = true;
-        UE_LOG(LogTemp, Warning, TEXT("CheckAndExecuteCombatJump: 평지→언덕 점프 조건 만족"));
     }
     else if (CurrentLandType == ELandType::Hills && TargetLandType == ELandType::Mountains)
     {
         bShouldJump = true;
-        UE_LOG(LogTemp, Warning, TEXT("CheckAndExecuteCombatJump: 언덕→산 점프 조건 만족"));
     }
 
     if (!bShouldJump)
     {
-        UE_LOG(LogTemp, Warning, TEXT("CheckAndExecuteCombatJump: 점프 조건 불만족"));
         return;
     }
 
@@ -897,14 +880,8 @@ void UUnitVisualizationComponent::CheckAndExecuteCombatJump(FVector2D FromHex, F
     {
         if (!MoveComp->IsFalling() && MoveComp->CanAttemptJump())
         {
-            UE_LOG(LogTemp, Warning, TEXT("CheckAndExecuteCombatJump: 점프 실행!"));
             Unit->Jump();
             LastJumpedTargetHex = ToHexRounded; // 점프 기록
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("CheckAndExecuteCombatJump: 점프 불가 - IsFalling=%d, CanAttemptJump=%d"), 
-                MoveComp->IsFalling(), MoveComp->CanAttemptJump());
         }
     }
 }
@@ -1154,35 +1131,29 @@ void UUnitVisualizationComponent::StartReturningToOrigin()
     }
 }
 
-void UUnitVisualizationComponent::CompleteCombatVisualization()
+// ================= 근거리 전투 완료 처리 (CivilizationShort 방식) =================
+void UUnitVisualizationComponent::CompleteMeleeCombatVisualization()
 {
     AUnitCharacterBase* Attacker = Cast<AUnitCharacterBase>(GetOwner());
-    if (!Attacker)
+    if (!Attacker || !CombatAttacker.IsValid() || Attacker != CombatAttacker.Get())
     {
         return;
     }
 
-    // 이 컴포넌트의 소유자가 공격자인지 확인
-    if (!CombatAttacker.IsValid() || Attacker != CombatAttacker.Get())
-    {
-        return;
-    }
-
-    // 방어자가 살아있으면 원래 위치로 복귀
+    // 방어자가 살아있으면 원래 위치로 복귀 시작 (복귀 완료를 기다리지 않음)
     if (CombatDefender.IsValid() && CurrentCombatResult.bDefenderAlive)
     {
         AUnitCharacterBase* Defender = CombatDefender.Get();
         if (UUnitVisualizationComponent* DefenderVisComp = Defender->GetUnitVisualizationComponent())
         {
-            // 방어자가 원래 위치에 있지 않으면 복귀 시작
             if (WorldComponent)
             {
                 FVector2D DefenderCurrentHex = WorldComponent->WorldToHex(Defender->GetActorLocation());
                 if (DefenderCurrentHex != DefenderVisComp->DefenderOriginalHexPosition)
                 {
+                    // 방어자 복귀 시작 (근거리)
                     DefenderVisComp->StartReturningToOrigin();
-                    // 방어자 복귀가 완료되면 StopCombatVisualization이 호출됨
-                    // 공격자는 방어자 복귀를 기다리지 않고 즉시 초기화
+                    // 주의: 공격자는 방어자 복귀를 기다리지 않고 즉시 완료 알림
                 }
                 else
                 {
@@ -1201,26 +1172,139 @@ void UUnitVisualizationComponent::CompleteCombatVisualization()
         }
     }
 
-    // UnitManager에 전투 완료 알림
-    // 주의: 방어자가 Destroy되었어도 전투 완료 알림은 반드시 보내야 함 (PendingCombatActions 감소를 위해)
+    // 근거리 전투: 즉시 전투 완료 알림 (방어자 복귀를 기다리지 않음)
     if (UnitManager && CombatAttacker.IsValid())
     {
         FVector2D AttackerHex = AttackerOriginalHexPosition;
         FVector2D DefenderHex = DefenderOriginalHexPosition;
         
-        // 방어자 참조 가져오기 (Destroy되었어도 참조는 유효할 수 있음)
         AUnitCharacterBase* DefenderPtr = nullptr;
         if (CombatDefender.IsValid())
         {
             DefenderPtr = CombatDefender.Get();
         }
         
-        // 방어자가 Destroy되었어도 전투 완료 알림은 보내야 함
         UnitManager->OnCombatVisualizationComplete(CombatAttacker.Get(), DefenderPtr, CurrentCombatResult, AttackerHex, DefenderHex);
     }
 
     // 공격자 자신 초기화
     StopCombatVisualization();
+}
+
+// ================= 원거리 전투 완료 처리 (CivilizationRanged 방식) =================
+void UUnitVisualizationComponent::CompleteRangedCombatVisualization()
+{
+    AUnitCharacterBase* Attacker = Cast<AUnitCharacterBase>(GetOwner());
+    if (!Attacker || !CombatAttacker.IsValid() || Attacker != CombatAttacker.Get())
+    {
+        return;
+    }
+
+    // 복귀 완료 플래그 초기화 (원거리 전투용)
+    bAttackerReturned = false;
+    bDefenderReturned = false;
+
+    // 방어자가 살아있으면 원래 위치로 복귀 시작 (원거리는 제자리이므로 복귀 없을 수도 있음)
+    if (CombatDefender.IsValid() && CurrentCombatResult.bDefenderAlive)
+    {
+        AUnitCharacterBase* Defender = CombatDefender.Get();
+        if (UUnitVisualizationComponent* DefenderVisComp = Defender->GetUnitVisualizationComponent())
+        {
+            if (WorldComponent)
+            {
+                FVector2D DefenderCurrentHex = WorldComponent->WorldToHex(Defender->GetActorLocation());
+                if (DefenderCurrentHex != DefenderVisComp->DefenderOriginalHexPosition)
+                {
+                    // 방어자 복귀 시작 (원거리)
+                    DefenderVisComp->StartReturningToOrigin_Ranged();
+                    bDefenderReturned = false; // 복귀 필요
+                }
+                else
+                {
+                    // 이미 원래 위치에 있으면 복귀 완료로 처리
+                    DefenderVisComp->StopCombatVisualization();
+                    bDefenderReturned = true; // 복귀 불필요
+                }
+            }
+        }
+    }
+    else if (CombatDefender.IsValid())
+    {
+        // 방어자가 죽었으면 복귀 완료로 처리
+        if (UUnitVisualizationComponent* DefenderVisComp = CombatDefender->GetUnitVisualizationComponent())
+        {
+            DefenderVisComp->StopCombatVisualization();
+        }
+        bDefenderReturned = true; // 방어자가 죽었으므로 복귀 불필요
+    }
+    else
+    {
+        bDefenderReturned = true;
+    }
+
+    // 원거리 전투: 공격자 복귀 시작 (제자리 공격이므로 복귀 없을 수도 있음)
+    if (WorldComponent)
+    {
+        FVector2D AttackerCurrentHex = WorldComponent->WorldToHex(Attacker->GetActorLocation());
+        if (AttackerCurrentHex != AttackerOriginalHexPosition)
+        {
+            // 공격자가 원래 위치에 있지 않으면 복귀 시작 (원거리)
+            StartReturningToOrigin_Ranged();
+            bAttackerReturned = false; // 복귀 필요
+        }
+        else
+        {
+            // 이미 원래 위치에 있으면 복귀 완료로 처리
+            bAttackerReturned = true;
+            // 모든 복귀 완료 확인 후 전투 완료 알림
+            CheckAndNotifyRangedCombatComplete();
+        }
+    }
+    else
+    {
+        // WorldComponent가 없으면 복귀 완료로 처리 (폴백)
+        bAttackerReturned = true;
+        CheckAndNotifyRangedCombatComplete();
+    }
+}
+
+// ================= 원거리 전투 복귀 완료 확인 후 알림 (CivilizationRanged 방식) =================
+void UUnitVisualizationComponent::CheckAndNotifyRangedCombatComplete()
+{
+    // 공격자 컴포넌트에서만 호출되어야 함
+    AUnitCharacterBase* OwnerUnit = Cast<AUnitCharacterBase>(GetOwner());
+    if (!OwnerUnit || !CombatAttacker.IsValid() || OwnerUnit != CombatAttacker.Get())
+    {
+        return;
+    }
+
+    // 모든 복귀 완료 확인 (원거리 전투)
+    // 방어자가 죽었을 때는 공격자 복귀 완료만으로 전투 완료
+    bool bAllReturned = bAttackerReturned && (bDefenderReturned || !CurrentCombatResult.bDefenderAlive);
+
+    if (bAllReturned)
+    {
+        // UnitManager에 전투 완료 알림
+        // 주의: 방어자가 Destroy되었어도 전투 완료 알림은 반드시 보내야 함 (PendingCombatActions 감소를 위해)
+        if (UnitManager && CombatAttacker.IsValid())
+        {
+            FVector2D AttackerHex = AttackerOriginalHexPosition;
+            FVector2D DefenderHex = DefenderOriginalHexPosition;
+            
+            // 방어자 참조 가져오기 (Destroy되었어도 참조는 유효할 수 있음)
+            AUnitCharacterBase* DefenderPtr = nullptr;
+            if (CombatDefender.IsValid())
+            {
+                DefenderPtr = CombatDefender.Get();
+            }
+            
+            // 방어자가 Destroy되었어도 전투 완료 알림은 보내야 함
+            UnitManager->OnCombatVisualizationComplete(CombatAttacker.Get(), DefenderPtr, CurrentCombatResult, AttackerHex, DefenderHex);
+        }
+
+        // 공격자 자신 초기화
+        StopCombatVisualization();
+    }
 }
 
 void UUnitVisualizationComponent::PlayMontage(UAnimMontage* Montage, AUnitCharacterBase* TargetUnit)
@@ -1307,15 +1391,14 @@ void UUnitVisualizationComponent::OnMontageEnded(UAnimMontage* Montage, bool bIn
         case ECombatVisualizationState::DefenderDeath_Ranged:
         {
             // 방어자 피격/사망 애니메이션 종료 (원거리)
-            // 원거리 전투는 이동이 없으므로 복귀 없이 바로 전투 완료 처리
-            // 이 함수는 방어자의 컴포넌트에서 호출되므로, 공격자의 컴포넌트를 찾아서 전투 완료 처리
+            // 원거리 전투 완료 처리 (CivilizationRanged 방식)
             if (CombatAttacker.IsValid())
             {
                 AUnitCharacterBase* Attacker = CombatAttacker.Get();
                 if (UUnitVisualizationComponent* AttackerVisComp = Attacker->GetUnitVisualizationComponent())
                 {
-                    // 공격자의 CompleteCombatVisualization 호출 (전투 완료 알림 포함)
-                    AttackerVisComp->CompleteCombatVisualization();
+                    // 원거리 전투 완료 함수 호출
+                    AttackerVisComp->CompleteRangedCombatVisualization();
                 }
             }
             // 방어자 상태 초기화
@@ -1473,13 +1556,15 @@ void UUnitVisualizationComponent::OnCombatNotify_Death()
             AUnitCharacterBase* Attacker = CombatAttacker.Get();
             if (UUnitVisualizationComponent* AttackerVisComp = Attacker->GetUnitVisualizationComponent())
             {
-                // 근거리/원거리에 따라 복귀 함수 호출
+                // 근거리/원거리에 따라 다른 처리
                 if (AttackerVisComp->bIsRangedCombat)
                 {
-                    AttackerVisComp->StartReturningToOrigin_Ranged();
+                    // 원거리 전투 완료 (원거리는 복귀 불필요하므로 즉시 완료)
+                    AttackerVisComp->CompleteRangedCombatVisualization();
                 }
                 else
                 {
+                    // 근거리 전투: 공격자 복귀 시작 (복귀 완료 후 CompleteMeleeCombatVisualization 호출됨)
                     AttackerVisComp->StartReturningToOrigin();
                 }
             }
@@ -1680,11 +1765,7 @@ void UUnitVisualizationComponent::StartReturningToOrigin_Ranged()
     // 공격자인 경우
     if (bIsAttacker)
     {
-        // 현재 위치(방어자 근처)와 원래 위치 비교해서 점프 체크
-        FVector2D CurrentHex = WorldComponent->WorldToHex(OwnerUnit->GetActorLocation());
-        FVector2D OriginHex = AttackerOriginalHexPosition;
-        CheckAndExecuteCombatJump(CurrentHex, OriginHex);
-
+        // 원거리 전투는 제자리 복귀이므로 점프 체크 불필요
         // 원래 위치의 월드 좌표 가져오기
         FVector OriginWorldPosition = AttackerOriginalWorldPosition;
 
