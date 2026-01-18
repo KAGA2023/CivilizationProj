@@ -90,6 +90,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Unit Spawning")
     class AUnitCharacterBase* SpawnUnitAtHex(FVector2D HexPosition, const FName& RowName, int32 PlayerIndex = -1, bool bSkipPlacementCheck = false); // 지정된 육각형 좌표에 유닛 소환 (PlayerIndex로 소유 플레이어 지정, bSkipPlacementCheck로 배치 체크 건너뛰기)
 
+    UFUNCTION(BlueprintCallable, Category = "Unit Spawning")
+    FVector2D FindSpawnLocationNearCity(FVector2D CityHex) const; // 도시 주변 1칸 내에서 유닛 소환 가능한 타일 찾기 (랜덤 선택, 없으면 FVector2D(-1, -1) 반환)
+
     // 유닛 관리 함수들
     UFUNCTION(BlueprintCallable, Category = "Unit Management")
     TArray<class AUnitCharacterBase*> GetAllUnits() const; // 모든 유닛 가져오기

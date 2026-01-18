@@ -192,5 +192,22 @@ protected:
 		UDiplomacyManager* DiplomacyManager
 	);
 
+	// 사거리 내 적 도시 찾기 (거리 가까운 순 정렬)
+	// @param CombatUnitPosition 전투 유닛의 현재 위치
+	// @param AttackRange 공격 사거리
+	// @param PlayerIndex 현재 AI 플레이어 인덱스
+	// @param WorldComponent 월드 컴포넌트
+	// @param DiplomacyManager 외교 매니저
+	// @param GameInstance 게임 인스턴스
+	// @return 적 도시 좌표 배열 (거리 가까운 순 정렬), 없으면 빈 배열
+	TArray<FVector2D> FindEnemyCitiesInRange(
+		FVector2D CombatUnitPosition,
+		int32 AttackRange,
+		int32 PlayerIndex,
+		UWorldComponent* WorldComponent,
+		UDiplomacyManager* DiplomacyManager,
+		USuperGameInstance* GameInstance
+	);
+
 };
 

@@ -83,6 +83,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Combat Visualization")
     void StartCombatVisualization(AUnitCharacterBase* Attacker, AUnitCharacterBase* Defender, const FCombatResult& CombatResult);
 
+    // 도시 공격 전투 시각화 시작
+    UFUNCTION(BlueprintCallable, Category = "Combat Visualization")
+    void StartCombatVisualizationAgainstCity(AUnitCharacterBase* Attacker, class UCityComponent* CityComponent, FVector2D CityHex, const FCombatResult& CombatResult);
+
     // 전투 중인지 확인
     UFUNCTION(BlueprintCallable, Category = "Combat Visualization")
     bool IsInCombat() const { return bIsInCombat; }
@@ -178,7 +182,11 @@ private:
         AttackerAttack_Ranged,    // 공격자 공격 몽타주 재생 중 (원거리)
         DefenderHit_Ranged,  // 방어자 피격 몽타주 재생 중 (원거리)
         DefenderDeath_Ranged, // 방어자 사망 몽타주 재생 중 (원거리)
-        ReturningToOrigin_Ranged // 공격자/방어자 원래 위치로 복귀 중 (원거리)
+        ReturningToOrigin_Ranged, // 공격자/방어자 원래 위치로 복귀 중 (원거리)
+        // 도시 공격 전투 상태 (근거리/원거리 구분 없음)
+        RotatingToCity,        // 공격자가 도시를 바라보도록 회전 중
+        AttackingCity,         // 공격자 공격 몽타주 재생 중 (AttackMontage)
+        ReturningFromCity      // 공격자 원래 위치로 복귀 중
     };
 
     // 전투 상태
@@ -187,6 +195,13 @@ private:
     
     // 원거리 전투 여부
     bool bIsRangedCombat = false;
+
+    // 도시 공격 여부
+    bool bIsCityCombat = false;
+
+    // 도시 위치 정보 (도시 공격 전용)
+    FVector2D CityHexPosition = FVector2D::ZeroVector;
+    FVector CityWorldPosition = FVector::ZeroVector;
 
     // 전투 관련 참조
     UPROPERTY()
@@ -292,6 +307,19 @@ private:
 
     // 공격자/방어자 원래 위치로 복귀 (원거리)
     void StartReturningToOrigin_Ranged();
+
+    // 도시 공격 관련 함수
+    // 공격자가 도시를 바라보도록 회전 처리
+    void UpdateAttackerRotationToCity(float DeltaTime);
+
+    // 도시 공격 몽타주 재생 (AttackMontage 사용)
+    void PlayAttackerAttackMontageAgainstCity();
+
+    // 도시 공격 후 원래 위치로 복귀 시작
+    void StartReturningFromCity();
+
+    // 도시 공격 전투 완료 처리
+    void CompleteCityCombatVisualization();
 
     // 근거리 전투 완료 처리 (CivilizationShort 방식: 즉시 완료 알림)
     void CompleteMeleeCombatVisualization();

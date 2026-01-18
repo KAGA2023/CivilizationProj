@@ -64,21 +64,21 @@ void UAIPlayerManager::Initialize()
 				}
 			}
 
-			// ========== 디버깅용: AI 플레이어 1, 2, 3이 서로에게 전쟁 선포 ==========
-			UDiplomacyManager* DiplomacyManager = GameInstance->GetDiplomacyManager();
-			if (DiplomacyManager)
-			{
-				// 현재 라운드 가져오기
-				int32 CurrentRound = GetCurrentRound();
+			//// ========== 디버깅용: AI 플레이어 1, 2, 3이 서로에게 전쟁 선포 ==========
+			//UDiplomacyManager* DiplomacyManager = GameInstance->GetDiplomacyManager();
+			//if (DiplomacyManager)
+			//{
+			//	// 현재 라운드 가져오기
+			//	int32 CurrentRound = GetCurrentRound();
 
-				// AI 플레이어 1, 2, 3이 서로에게 전쟁 선포
-				// Player 1 -> Player 2
-				DiplomacyManager->DeclareWar(1, 2, CurrentRound);
-				// Player 1 -> Player 3
-				DiplomacyManager->DeclareWar(1, 3, CurrentRound);
-				// Player 2 -> Player 3
-				DiplomacyManager->DeclareWar(2, 3, CurrentRound);
-			}
+			//	// AI 플레이어 1, 2, 3이 서로에게 전쟁 선포
+			//	// Player 1 -> Player 2
+			//	DiplomacyManager->DeclareWar(1, 2, CurrentRound);
+			//	// Player 1 -> Player 3
+			//	DiplomacyManager->DeclareWar(1, 3, CurrentRound);
+			//	// Player 2 -> Player 3
+			//	DiplomacyManager->DeclareWar(2, 3, CurrentRound);
+			//}
 		}
 	}
 }
@@ -1734,7 +1734,48 @@ void UAIPlayerManager::ProcessCombatUnitMovementState(int32 PlayerIndex)
 		}
 
 		// ========== 전쟁 상태 로직 ==========
-		// 4칸 반경 내 적 유닛 탐지
+		// StatusComp를 먼저 가져오기 (여러 곳에서 사용)
+		UUnitStatusComponent* StatusComp = CombatUnit->GetUnitStatusComponent();
+		
+		// 1단계: 현재 위치에서 이미 공격 가능한지 확인
+		// 공격 가능 여부 확인
+		if (StatusComp && StatusComp->CanAttack())
+		{
+			// 사정거리 계산
+			int32 BaseRange = StatusComp->GetRange();
+			int32 FinalRange = BaseRange;
+
+			// 원거리 유닛(Range > 1)이면 Range 보너스 적용
+			if (BaseRange > 1)
+			{
+				UUnitCombatComponent* CombatComp = CombatUnit->GetUnitCombatComponent();
+				if (CombatComp)
+				{
+					int32 RangeBonus = CombatComp->CalculateRangeBonus(CombatUnitPosition);
+					FinalRange += RangeBonus;
+				}
+			}
+
+			// 현재 위치에서 사정거리 내 적 유닛 탐지
+			TArray<AUnitCharacterBase*> EnemyUnitsInRange = FindEnemyUnitsInRange(
+				CombatUnitPosition, FinalRange, PlayerIndex, UnitManager, WorldComponent, DiplomacyManager
+			);
+
+			// 현재 위치에서 사정거리 내 적 도시 탐지
+			TArray<FVector2D> EnemyCitiesInRange = FindEnemyCitiesInRange(
+				CombatUnitPosition, FinalRange, PlayerIndex, WorldComponent, DiplomacyManager, GameInstance
+			);
+
+			// 이미 공격 가능한 위치에 있으면 이동 건너뛰고 다음 유닛으로 (전투 단계에서 처리)
+			if (EnemyUnitsInRange.Num() > 0 || EnemyCitiesInRange.Num() > 0)
+			{
+				AIPlayer->CurrentCombatUnitIndex++;
+				continue;
+			}
+		}
+
+		// 2단계: 공격 불가능한 위치에 있으면 이동 시도
+		// 4칸 반경 내 적 유닛 탐지 (이동 목표 찾기용)
 		TArray<AUnitCharacterBase*> EnemyUnits = FindEnemyUnitsInRange(
 			CombatUnitPosition, 4, PlayerIndex, UnitManager, WorldComponent, DiplomacyManager
 		);
@@ -1752,10 +1793,10 @@ void UAIPlayerManager::ProcessCombatUnitMovementState(int32 PlayerIndex)
 				continue;
 			}
 
-			// 전투 유닛의 사정거리 계산
+			// 전투 유닛의 사정거리 계산 (위에서 선언한 StatusComp 재사용)
 			int32 BaseRange = 1; // 기본 사정거리
 			int32 FinalRange = BaseRange;
-			if (UUnitStatusComponent* StatusComp = CombatUnit->GetUnitStatusComponent())
+			if (StatusComp)
 			{
 				BaseRange = StatusComp->GetRange();
 				FinalRange = BaseRange;
@@ -1838,23 +1879,169 @@ void UAIPlayerManager::ProcessCombatUnitMovementState(int32 PlayerIndex)
 			);
 			if (EnemyCityCoord != FVector2D(-1, -1))
 			{
-				// 이동 시작 시도
-				if (TryMoveUnitToTile(CombatUnit, CombatUnitPosition, EnemyCityCoord, UnitManager, AIPlayer->PendingUnitMovements))
+				// 적 도시 주변에서 이동 가능한 타일 찾기 (1칸 → 2칸 → 3칸 확장)
+				FVector2D BestTargetTile = FVector2D(-1, -1);
+				int32 MinDistance = INT32_MAX;
+				int32 MaxMovementCost = UnitManager->GetUnitRemainingMovement(CombatUnit);
+				
+				// 1칸 범위 시도
+				TArray<FVector2D> OneRingHexes = WorldComponent->GetHexNeighbors(EnemyCityCoord);
+				for (const FVector2D& NeighborHex : OneRingHexes)
 				{
-					// 이동 시작 성공
-					AIPlayer->bIsProcessingCombatUnit = true;
-					AIPlayer->PendingPostAsyncState = EAITurnState::ProcessingCombatUnitMovement;
+					// 유효한 좌표인지 확인
+					if (!WorldComponent->IsValidHexPosition(NeighborHex))
+					{
+						continue;
+					}
 					
-					// 비동기 작업 대기 상태로 전환
-					TransitionToNextState(PlayerIndex);
-					return; // 여기서 종료, 콜백에서 재개
+					// 타일이 존재하고 이동 가능한지 확인
+					UWorldTile* Tile = WorldComponent->GetTileAtHex(NeighborHex);
+					if (!Tile || !Tile->IsPassable())
+					{
+						continue;
+					}
+					
+					// 유닛 배치 가능한지 확인
+					if (!UnitManager->CanPlaceUnitAtHex(NeighborHex, CombatUnit))
+					{
+						continue;
+					}
+					
+					// 현재 위치에서 이 타일까지 이동 가능한지 확인 (경로 탐색)
+					TArray<FVector2D> Path = UnitManager->FindPathWithMovementCost(
+						CombatUnitPosition, NeighborHex, MaxMovementCost
+					);
+					
+					if (Path.Num() > 1)
+					{
+						// 이동 가능한 타일 중 가장 가까운 타일 선택
+						int32 Distance = WorldComponent->GetHexDistance(CombatUnitPosition, NeighborHex);
+						if (Distance < MinDistance)
+						{
+							MinDistance = Distance;
+							BestTargetTile = NeighborHex;
+						}
+					}
 				}
-				else
+				
+				// 1칸 범위에 타일이 없으면 2칸 범위 시도
+				if (BestTargetTile == FVector2D(-1, -1))
 				{
-					// 이동 실패 시 다음 유닛으로
-					AIPlayer->CurrentCombatUnitIndex++;
-					continue;
+					TArray<FVector2D> AllHexesInRadius = WorldComponent->GetHexesInRadius(EnemyCityCoord, 2);
+					for (const FVector2D& Hex : AllHexesInRadius)
+					{
+						// 정확히 2칸 거리만 (1칸 제외)
+						int32 DistanceFromCity = WorldComponent->GetHexDistance(EnemyCityCoord, Hex);
+						if (DistanceFromCity != 2)
+						{
+							continue;
+						}
+						
+						// 유효한 좌표인지 확인
+						if (!WorldComponent->IsValidHexPosition(Hex))
+						{
+							continue;
+						}
+						
+						// 타일이 존재하고 이동 가능한지 확인
+						UWorldTile* Tile = WorldComponent->GetTileAtHex(Hex);
+						if (!Tile || !Tile->IsPassable())
+						{
+							continue;
+						}
+						
+						// 유닛 배치 가능한지 확인
+						if (!UnitManager->CanPlaceUnitAtHex(Hex, CombatUnit))
+						{
+							continue;
+						}
+						
+						// 현재 위치에서 이 타일까지 이동 가능한지 확인 (경로 탐색)
+						TArray<FVector2D> Path = UnitManager->FindPathWithMovementCost(
+							CombatUnitPosition, Hex, MaxMovementCost
+						);
+						
+						if (Path.Num() > 1)
+						{
+							// 이동 가능한 타일 중 가장 가까운 타일 선택
+							int32 Distance = WorldComponent->GetHexDistance(CombatUnitPosition, Hex);
+							if (Distance < MinDistance)
+							{
+								MinDistance = Distance;
+								BestTargetTile = Hex;
+							}
+						}
+					}
 				}
+				
+				// 2칸 범위에도 타일이 없으면 3칸 범위 시도
+				if (BestTargetTile == FVector2D(-1, -1))
+				{
+					TArray<FVector2D> AllHexesInRadius = WorldComponent->GetHexesInRadius(EnemyCityCoord, 3);
+					for (const FVector2D& Hex : AllHexesInRadius)
+					{
+						// 정확히 3칸 거리만 (1~2칸 제외)
+						int32 DistanceFromCity = WorldComponent->GetHexDistance(EnemyCityCoord, Hex);
+						if (DistanceFromCity != 3)
+						{
+							continue;
+						}
+						
+						// 유효한 좌표인지 확인
+						if (!WorldComponent->IsValidHexPosition(Hex))
+						{
+							continue;
+						}
+						
+						// 타일이 존재하고 이동 가능한지 확인
+						UWorldTile* Tile = WorldComponent->GetTileAtHex(Hex);
+						if (!Tile || !Tile->IsPassable())
+						{
+							continue;
+						}
+						
+						// 유닛 배치 가능한지 확인
+						if (!UnitManager->CanPlaceUnitAtHex(Hex, CombatUnit))
+						{
+							continue;
+						}
+						
+						// 현재 위치에서 이 타일까지 이동 가능한지 확인 (경로 탐색)
+						TArray<FVector2D> Path = UnitManager->FindPathWithMovementCost(
+							CombatUnitPosition, Hex, MaxMovementCost
+						);
+						
+						if (Path.Num() > 1)
+						{
+							// 이동 가능한 타일 중 가장 가까운 타일 선택
+							int32 Distance = WorldComponent->GetHexDistance(CombatUnitPosition, Hex);
+							if (Distance < MinDistance)
+							{
+								MinDistance = Distance;
+								BestTargetTile = Hex;
+							}
+						}
+					}
+				}
+				
+				// 찾은 타일로 이동 시도
+				if (BestTargetTile != FVector2D(-1, -1))
+				{
+					if (TryMoveUnitToTile(CombatUnit, CombatUnitPosition, BestTargetTile, UnitManager, AIPlayer->PendingUnitMovements))
+					{
+						// 이동 시작 성공
+						AIPlayer->bIsProcessingCombatUnit = true;
+						AIPlayer->PendingPostAsyncState = EAITurnState::ProcessingCombatUnitMovement;
+						
+						// 비동기 작업 대기 상태로 전환
+						TransitionToNextState(PlayerIndex);
+						return; // 여기서 종료, 콜백에서 재개
+					}
+				}
+				
+				// 이동 실패 시 다음 유닛으로
+				AIPlayer->CurrentCombatUnitIndex++;
+				continue;
 			}
 			else
 			{
@@ -2078,9 +2265,94 @@ void UAIPlayerManager::ProcessCombatUnitCombatState(int32 PlayerIndex)
 		}
 		else
 		{
-			// 사거리 내 공격 가능한 적 유닛이 없으면 다음 유닛으로
-			AIPlayer->CurrentCombatUnitIndex++;
-			continue;
+			// 사거리 내 적 유닛이 없으면 적 도시 공격 시도
+			TArray<FVector2D> EnemyCities = FindEnemyCitiesInRange(
+				CombatUnitPosition, FinalRange, PlayerIndex, WorldComponent, DiplomacyManager, GameInstance
+			);
+
+			if (EnemyCities.Num() > 0)
+			{
+				// 사거리 내 적 도시가 있으면 가장 가까운 도시 공격 시도
+				FVector2D TargetCityCoord = EnemyCities[0]; // 가장 가까운 적 도시
+
+				// 도시 컴포넌트 가져오기
+				UCityComponent* CityComponent = nullptr;
+				int32 TotalPlayerCount = GameInstance->GetPlayerStateCount();
+				for (int32 i = 0; i < TotalPlayerCount; i++)
+				{
+					if (ASuperPlayerState* OtherPlayerState = GameInstance->GetPlayerState(i))
+					{
+						if (OtherPlayerState->HasCity() && OtherPlayerState->GetCityCoordinate() == TargetCityCoord)
+						{
+							CityComponent = OtherPlayerState->GetCityComponent();
+							break;
+						}
+					}
+				}
+
+				if (!CityComponent)
+				{
+					AIPlayer->CurrentCombatUnitIndex++;
+					continue;
+				}
+
+				// 전투 가능 여부 확인
+				UUnitCombatComponent* CombatComp = CombatUnit->GetUnitCombatComponent();
+				if (!CombatComp)
+				{
+					AIPlayer->CurrentCombatUnitIndex++;
+					continue;
+				}
+
+				if (!CombatComp->CanExecuteCombatAgainstCity(CombatUnit, CityComponent, CombatUnitPosition, TargetCityCoord))
+				{
+					AIPlayer->CurrentCombatUnitIndex++;
+					continue;
+				}
+
+				// 전투 시작
+				AIPlayer->bIsProcessingCombatUnit = true;
+
+				// 전투 실행
+				int32 HexDistance = WorldComponent->GetHexDistance(CombatUnitPosition, TargetCityCoord);
+				FCombatResult CombatResult = CombatComp->ExecuteCombatAgainstCity(CombatUnit, CityComponent, HexDistance, CombatUnitPosition, TargetCityCoord);
+
+				// 공격자의 UnitVisualizationComponent 가져오기
+				UUnitVisualizationComponent* AttackerVisComp = CombatUnit->GetUnitVisualizationComponent();
+				if (AttackerVisComp)
+				{
+					// WorldComponent 설정 (없으면)
+					if (!AttackerVisComp->GetWorldComponent())
+					{
+						AttackerVisComp->SetWorldComponent(WorldComponent);
+					}
+
+					// UnitManager 설정
+					AttackerVisComp->SetUnitManager(UnitManager);
+
+					// 도시 공격 시각화 시작
+					AttackerVisComp->StartCombatVisualizationAgainstCity(CombatUnit, CityComponent, TargetCityCoord, CombatResult);
+				}
+				else
+				{
+					// UnitVisualizationComponent가 없으면 즉시 결과 처리 (폴백)
+					UnitManager->OnCombatVisualizationComplete(CombatUnit, nullptr, CombatResult, CombatUnitPosition, TargetCityCoord);
+				}
+
+				// PendingCombatActions 증가
+				AIPlayer->PendingCombatActions++;
+				AIPlayer->PendingPostAsyncState = EAITurnState::ProcessingCombatUnitCombat;
+
+				// 비동기 작업 대기 상태로 전환
+				TransitionToNextState(PlayerIndex);
+				return; // 여기서 종료, 콜백에서 재개
+			}
+			else
+			{
+				// 사거리 내 공격 가능한 적 유닛도 적 도시도 없으면 다음 유닛으로
+				AIPlayer->CurrentCombatUnitIndex++;
+				continue;
+			}
 		}
 	}
 
@@ -2265,6 +2537,98 @@ FVector2D UAIPlayerManager::FindClosestEnemyCity(
 	return ClosestEnemyCityCoord;
 }
 
+TArray<FVector2D> UAIPlayerManager::FindEnemyCitiesInRange(
+	FVector2D CombatUnitPosition,
+	int32 AttackRange,
+	int32 PlayerIndex,
+	UWorldComponent* WorldComponent,
+	UDiplomacyManager* DiplomacyManager,
+	USuperGameInstance* GameInstance
+)
+{
+	TArray<FVector2D> EnemyCities;
+
+	if (!WorldComponent || !DiplomacyManager || !GameInstance)
+	{
+		return EnemyCities;
+	}
+
+	// 반경 내 타일 수집
+	TArray<FVector2D> HexesInRadius = WorldComponent->GetHexesInRadius(CombatUnitPosition, AttackRange);
+
+	// 적 도시와 거리를 함께 저장할 구조체
+	struct FEnemyCityWithDistance
+	{
+		FVector2D CityCoord;
+		int32 Distance;
+
+		FEnemyCityWithDistance(FVector2D InCityCoord, int32 InDistance)
+			: CityCoord(InCityCoord), Distance(InDistance) {}
+	};
+
+	TArray<FEnemyCityWithDistance> EnemyCitiesWithDistance;
+
+	// 각 타일에서 적 도시 확인
+	for (const FVector2D& HexCoord : HexesInRadius)
+	{
+		// 도시가 있는지 확인
+		if (!WorldComponent->IsCityAtHex(HexCoord))
+		{
+			continue;
+		}
+
+		// 도시 소유 플레이어 찾기
+		int32 CityOwnerIndex = -1;
+		int32 TotalPlayerCount = GameInstance->GetPlayerStateCount();
+		for (int32 i = 0; i < TotalPlayerCount; i++)
+		{
+			if (ASuperPlayerState* PlayerState = GameInstance->GetPlayerState(i))
+			{
+				if (PlayerState->HasCity() && PlayerState->GetCityCoordinate() == HexCoord)
+				{
+					CityOwnerIndex = i;
+					break;
+				}
+			}
+		}
+
+		// 도시 소유자를 찾을 수 없으면 건너뛰기
+		if (CityOwnerIndex == -1)
+		{
+			continue;
+		}
+
+		// 자신의 도시는 건너뛰기
+		if (CityOwnerIndex == PlayerIndex)
+		{
+			continue;
+		}
+
+		// 전쟁 관계인지 확인
+		if (!DiplomacyManager->IsAtWar(PlayerIndex, CityOwnerIndex))
+		{
+			continue; // 전쟁 관계가 아니면 건너뛰기
+		}
+
+		// 거리 계산
+		int32 Distance = WorldComponent->GetHexDistance(CombatUnitPosition, HexCoord);
+		EnemyCitiesWithDistance.Add(FEnemyCityWithDistance(HexCoord, Distance));
+	}
+
+	// 거리 가까운 순으로 정렬
+	EnemyCitiesWithDistance.Sort([](const FEnemyCityWithDistance& A, const FEnemyCityWithDistance& B)
+	{
+		return A.Distance < B.Distance;
+	});
+
+	// 정렬된 도시만 반환
+	for (const FEnemyCityWithDistance& CityData : EnemyCitiesWithDistance)
+	{
+		EnemyCities.Add(CityData.CityCoord);
+	}
+
+	return EnemyCities;
+}
 
 void UAIPlayerManager::ProcessUnitMovementState(int32 PlayerIndex)
 {

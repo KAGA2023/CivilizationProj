@@ -74,6 +74,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Combat")
 	void SetupForCombat(class AUnitCharacterBase* Attacker, class AUnitCharacterBase* Defender, FVector2D AttackerHex, FVector2D DefenderHex);
 
+	// 도시 공격 전투 예측 정보 설정
+	UFUNCTION(BlueprintCallable, Category = "Combat")
+	void SetupForCombatAgainstCity(class AUnitCharacterBase* Attacker, class UCityComponent* CityComponent, FVector2D AttackerHex, FVector2D CityHex);
+
 private:
 	// 공격 데미지 계산 (기본 데미지 + 지형 보너스)
 	int32 CalculateAttackDamageWithBonus(class UUnitStatusComponent* AttackerStatusComp, class UUnitCombatComponent* AttackerCombatComp, FVector2D AttackerHex, FVector2D DefenderHex) const;
@@ -83,4 +87,7 @@ private:
 	
 	// 결과 이미지 표시 헬퍼
 	void SetCombatResultImage(const FString& ResultText, bool bShowWin, bool bShowDraw, bool bShowLose) const;
+
+	// 도시 공격 데미지 계산 (기본 데미지 + 지형 보너스)
+	int32 CalculateAttackDamageAgainstCityWithBonus(class UUnitStatusComponent* AttackerStatusComp, class UUnitCombatComponent* AttackerCombatComp, FVector2D AttackerHex, FVector2D CityHex) const;
 };

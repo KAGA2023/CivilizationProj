@@ -9,6 +9,7 @@
 #include "../../Combat/UnitCombatComponent.h"
 #include "../../World/WorldComponent.h"
 #include "../../SuperGameInstance.h"
+#include "../../City/CityComponent.h"
 
 void UUnitCombatUI::SetupForCombat(AUnitCharacterBase* Attacker, AUnitCharacterBase* Defender, FVector2D AttackerHex, FVector2D DefenderHex)
 {
@@ -330,4 +331,206 @@ void UUnitCombatUI::SetCombatResultImage(const FString& ResultText, bool bShowWi
 	{
 		LoseImg->SetVisibility(bShowLose ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
 	}
+}
+
+void UUnitCombatUI::SetupForCombatAgainstCity(AUnitCharacterBase* Attacker, UCityComponent* CityComponent, FVector2D AttackerHex, FVector2D CityHex)
+{
+	if (!Attacker || !CityComponent)
+	{
+		return;
+	}
+
+	// 공격자 정보 가져오기
+	UUnitStatusComponent* AttackerStatusComp = Attacker->GetUnitStatusComponent();
+	UUnitCombatComponent* AttackerCombatComp = Attacker->GetUnitCombatComponent();
+	
+	if (!AttackerStatusComp || !AttackerCombatComp)
+	{
+		return;
+	}
+
+	// ========== 1단계: 한 번만 가져올 데이터들을 함수 시작 부분에서 미리 계산 ==========
+	
+	// WorldComponent 가져오기 (한 번만)
+	UWorldComponent* WorldComponent = nullptr;
+	if (UWorld* World = GetWorld())
+	{
+		if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
+		{
+			WorldComponent = SuperGameInst->GetGeneratedWorldComponent();
+		}
+	}
+
+	// 체력 정보 한 번만 가져오기
+	int32 AttackerCurrentHealth = AttackerStatusComp->GetCurrentHealth();
+	int32 AttackerMaxHealth = AttackerStatusComp->GetMaxHealth();
+	int32 CityCurrentHealth = CityComponent->GetCurrentHealth();
+	int32 CityMaxHealth = CityComponent->GetMaxHealth();
+
+	// 공격력 한 번만 가져오기
+	int32 AttackerAttackStrength = AttackerStatusComp->GetAttackStrength();
+
+	// ========== 2단계: 데미지 계산 (한 번만 수행) ==========
+	
+	int32 FinalDamage = CalculateAttackDamageAgainstCityWithBonus(AttackerStatusComp, AttackerCombatComp, AttackerHex, CityHex);
+	
+	// 도시는 반격 없음
+	int32 PredictedCounterDamage = 0;
+
+	// ========== 3단계: 기본 UI 정보 설정 ==========
+	
+	// 유닛 이름 설정 (공격자)
+	if (PlayerUnitNameTxt)
+	{
+		FUnitBaseStat AttackerBaseStat = AttackerStatusComp->GetBaseStat();
+		PlayerUnitNameTxt->SetText(AttackerBaseStat.UnitName);
+	}
+
+	// 도시 이름 설정 (방어자) - "도시"로 표시
+	if (EnemyUnitNameTxt)
+	{
+		EnemyUnitNameTxt->SetText(FText::FromString(TEXT("도시")));
+	}
+
+	// 공격력 설정
+	if (PlayerUnitAtkTxt)
+	{
+		PlayerUnitAtkTxt->SetText(FText::FromString(FString::Printf(TEXT("%d"), AttackerAttackStrength)));
+	}
+
+	// 도시는 방어력 없음 - "0" 표시
+	if (EnemyUnitAtkTxt)
+	{
+		EnemyUnitAtkTxt->SetText(FText::FromString(TEXT("0")));
+	}
+
+	// 타일 효과 텍스트 설정 (공격자)
+	if (PlayerUnitTileEffectTxt && AttackerCombatComp)
+	{
+		int32 AttackerRange = AttackerStatusComp->GetRange();
+		FText TerrainBonusText = AttackerCombatComp->GetTerrainBonusText(AttackerHex, CityHex, AttackerRange);
+		PlayerUnitTileEffectTxt->SetText(TerrainBonusText);
+	}
+
+	// 도시는 지형 보너스 없음 - 빈 문자열
+	if (EnemyUnitTileEffectTxt)
+	{
+		EnemyUnitTileEffectTxt->SetText(FText::GetEmpty());
+	}
+
+	// 데미지 텍스트 설정 (계산된 값 사용)
+	if (PlayerUnitDmgTxt)
+	{
+		PlayerUnitDmgTxt->SetText(FText::FromString(FString::Printf(TEXT("%d"), FinalDamage)));
+	}
+
+	// 도시는 반격 없음 - "0" 표시
+	if (EnemyUnitDmgTxt)
+	{
+		EnemyUnitDmgTxt->SetText(FText::FromString(TEXT("0")));
+	}
+
+	// ========== 4단계: 전투 예측 및 HP UI 업데이트 ==========
+	
+	bool bCanDestroyCity = (CityCurrentHealth - FinalDamage <= 0);
+	bool bAttackerSurvives = true; // 도시는 반격 없으므로 항상 생존
+
+	// HP 텍스트 설정 (데미지 계산 후)
+	// PlayerUnitHpTxt: 현재 체력 -> 현재 체력 (반격 없음)
+	if (PlayerUnitHpTxt)
+	{
+		FString HpText = FString::Printf(TEXT("%d -> %d"), AttackerCurrentHealth, AttackerCurrentHealth);
+		PlayerUnitHpTxt->SetText(FText::FromString(HpText));
+	}
+
+	// EnemyUnitHpTxt: 현재 체력 -> 데미지 받고 난 체력
+	if (EnemyUnitHpTxt)
+	{
+		int32 CityHealthAfterDamage = FMath::Max(0, CityCurrentHealth - FinalDamage);
+		FString HpText = FString::Printf(TEXT("%d -> %d"), CityCurrentHealth, CityHealthAfterDamage);
+		EnemyUnitHpTxt->SetText(FText::FromString(HpText));
+	}
+
+	// HP 바 설정 (데미지 받고 난 체력 기준)
+	// PlayerUnitHpBar: 현재 체력 (변화 없음)
+	if (PlayerUnitHpBar)
+	{
+		float HpRatio = (AttackerMaxHealth > 0) ? static_cast<float>(AttackerCurrentHealth) / static_cast<float>(AttackerMaxHealth) : 0.0f;
+		HpRatio = FMath::Clamp(HpRatio, 0.0f, 1.0f);
+		PlayerUnitHpBar->SetPercent(HpRatio);
+	}
+
+	// PlayerUnitHpMinusBar: 현재 체력만큼 설정
+	if (PlayerUnitHpMinusBar)
+	{
+		float CurrentHpRatio = (AttackerMaxHealth > 0) ? static_cast<float>(AttackerCurrentHealth) / static_cast<float>(AttackerMaxHealth) : 0.0f;
+		CurrentHpRatio = FMath::Clamp(CurrentHpRatio, 0.0f, 1.0f);
+		PlayerUnitHpMinusBar->SetPercent(CurrentHpRatio);
+	}
+
+	// EnemyUnitHpBar: 도시 체력 -> 데미지 받고 난 체력
+	if (EnemyUnitHpBar)
+	{
+		int32 CityHealthAfterDamage = FMath::Max(0, CityCurrentHealth - FinalDamage);
+		float HpRatio = (CityMaxHealth > 0) ? static_cast<float>(CityHealthAfterDamage) / static_cast<float>(CityMaxHealth) : 0.0f;
+		HpRatio = FMath::Clamp(HpRatio, 0.0f, 1.0f);
+		EnemyUnitHpBar->SetPercent(HpRatio);
+	}
+
+	// EnemyUnitHpMinusBar: 현재 체력만큼 설정
+	if (EnemyUnitHpMinusBar)
+	{
+		float CurrentHpRatio = (CityMaxHealth > 0) ? static_cast<float>(CityCurrentHealth) / static_cast<float>(CityMaxHealth) : 0.0f;
+		CurrentHpRatio = FMath::Clamp(CurrentHpRatio, 0.0f, 1.0f);
+		EnemyUnitHpMinusBar->SetPercent(CurrentHpRatio);
+	}
+
+	// ========== 5단계: 결과 이미지 및 Versus 텍스트 설정 ==========
+	
+	// 도시를 파괴할 수 있으면 승리
+	if (bCanDestroyCity)
+	{
+		SetCombatResultImage(TEXT("승리"), true, false, false);
+	}
+	// 도시를 파괴할 수 없으면 데미지 비율에 따라 판정
+	else
+	{
+		// 데미지가 도시 체력의 50% 이상이면 "유리", 그 외는 "대등"
+		float DamageRatio = (CityMaxHealth > 0) ? 
+			static_cast<float>(FinalDamage) / static_cast<float>(CityMaxHealth) : 0.0f;
+		
+		if (DamageRatio >= 0.5f)
+		{
+			SetCombatResultImage(TEXT("유리"), true, false, false);
+		}
+		else
+		{
+			SetCombatResultImage(TEXT("대등"), false, true, false);
+		}
+	}
+}
+
+int32 UUnitCombatUI::CalculateAttackDamageAgainstCityWithBonus(UUnitStatusComponent* AttackerStatusComp, UUnitCombatComponent* AttackerCombatComp, FVector2D AttackerHex, FVector2D CityHex) const
+{
+	if (!AttackerStatusComp || !AttackerCombatComp)
+	{
+		return 0;
+	}
+
+	int32 AttackerAttackStrength = AttackerStatusComp->GetAttackStrength();
+	int32 AttackerCurrentHealth = AttackerStatusComp->GetCurrentHealth();
+	int32 AttackerMaxHealth = AttackerStatusComp->GetMaxHealth();
+	int32 BaseDamage = AttackerCombatComp->CalculateAttackDamage(AttackerAttackStrength, AttackerCurrentHealth, AttackerMaxHealth);
+	
+	// 지형 보너스 적용 (ExecuteCombatAgainstCity와 동일한 로직)
+	int32 AttackerRange = AttackerStatusComp->GetRange();
+	int32 CombatBonus = 0;
+	if (AttackerRange == 1)
+	{
+		// 근접 유닛: 지형 보너스 적용
+		CombatBonus = AttackerCombatComp->CalculateCombatBonus(AttackerHex, CityHex);
+	}
+	// 원거리 유닛은 공격력 보너스 없음
+	
+	return BaseDamage + CombatBonus;
 }

@@ -13,6 +13,7 @@
 
 class UUnitStatusComponent;
 class AUnitCharacterBase;
+class UCityComponent;
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class CIVILIZATION_API UUnitCombatComponent : public UActorComponent
@@ -29,6 +30,14 @@ public:
     // 전투 가능 여부 확인 (Hex 파라미터가 제공되면 사거리/층수 검증도 포함)
     UFUNCTION(BlueprintCallable, Category = "Combat")
     bool CanExecuteCombat(AUnitCharacterBase* Attacker, AUnitCharacterBase* Defender, FVector2D AttackerHex = FVector2D::ZeroVector, FVector2D DefenderHex = FVector2D::ZeroVector) const;
+
+    // 도시 공격 가능 여부 확인
+    UFUNCTION(BlueprintCallable, Category = "Combat")
+    bool CanExecuteCombatAgainstCity(AUnitCharacterBase* Attacker, UCityComponent* CityComponent, FVector2D AttackerHex = FVector2D::ZeroVector, FVector2D CityHex = FVector2D::ZeroVector) const;
+
+    // 도시 공격 실행
+    UFUNCTION(BlueprintCallable, Category = "Combat")
+    FCombatResult ExecuteCombatAgainstCity(AUnitCharacterBase* Attacker, UCityComponent* CityComponent, int32 HexDistance, FVector2D AttackerHex, FVector2D CityHex);
 
     // 공격 데미지 계산
     UFUNCTION(BlueprintCallable, Category = "Combat|Damage")

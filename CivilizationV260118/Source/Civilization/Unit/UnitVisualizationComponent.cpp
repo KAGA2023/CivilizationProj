@@ -5,6 +5,7 @@
 #include "../World/WorldComponent.h"
 #include "../Unit/UnitManager.h"
 #include "../Combat/UnitCombatStruct.h"
+#include "../City/CityComponent.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Animation/AnimInstance.h"
@@ -659,10 +660,13 @@ void UUnitVisualizationComponent::StopCombatVisualization()
     // 전투 상태 초기화
     bIsInCombat = false;
     bIsRangedCombat = false;
+    bIsCityCombat = false;
     CombatState = ECombatVisualizationState::None;
     CombatAttacker = nullptr;
     CombatDefender = nullptr;
     CurrentPlayingMontage = nullptr;
+    CityHexPosition = FVector2D::ZeroVector;
+    CityWorldPosition = FVector::ZeroVector;
 }
 
 void UUnitVisualizationComponent::UpdateCombatVisualization(float DeltaTime)
@@ -795,6 +799,32 @@ void UUnitVisualizationComponent::UpdateCombatVisualization(float DeltaTime)
                     // 방어자 자신은 전투 상태 초기화
                     StopCombatVisualization();
                 }
+            }
+            break;
+        }
+
+        // ================= 도시 공격 전투 상태 =================
+        case ECombatVisualizationState::RotatingToCity:
+        {
+            // 공격자가 도시를 바라보도록 회전 처리
+            UpdateAttackerRotationToCity(DeltaTime);
+            break;
+        }
+
+        case ECombatVisualizationState::AttackingCity:
+        {
+            // 공격 몽타주 재생 중 - OnMontageEnded에서 처리
+            break;
+        }
+
+        case ECombatVisualizationState::ReturningFromCity:
+        {
+            // 공격자 복귀 중
+            // 이동 완료는 HasReachedCombatTarget()에서 체크되어 StopCombatMovement() 호출
+            if (!bIsCombatMoving)
+            {
+                // 복귀 완료 - 전투 완료 처리
+                CompleteCityCombatVisualization();
             }
             break;
         }
@@ -1430,6 +1460,14 @@ void UUnitVisualizationComponent::OnMontageEnded(UAnimMontage* Montage, bool bIn
             break;
         }
 
+        // ================= 도시 공격 몽타주 종료 처리 =================
+        case ECombatVisualizationState::AttackingCity:
+        {
+            // 도시 공격 몽타주 종료 - 복귀 시작
+            StartReturningFromCity();
+            break;
+        }
+
         default:
             break;
     }
@@ -1816,3 +1854,160 @@ void UUnitVisualizationComponent::StartReturningToOrigin_Ranged()
     }
 }
 
+// ================= 도시 공격 전투 시각화 구현 =================
+
+void UUnitVisualizationComponent::StartCombatVisualizationAgainstCity(AUnitCharacterBase* Attacker, UCityComponent* CityComponent, FVector2D CityHex, const FCombatResult& CombatResult)
+{
+    if (!Attacker || !CityComponent || !WorldComponent)
+    {
+        return;
+    }
+
+    // 이 컴포넌트의 소유자가 공격자인지 확인
+    // 이 함수는 공격자의 컴포넌트에서 호출되어야 함
+    AUnitCharacterBase* OwnerUnit = Cast<AUnitCharacterBase>(GetOwner());
+    if (OwnerUnit != Attacker)
+    {
+        // 이 컴포넌트가 공격자의 것이 아니면 무시
+        return;
+    }
+
+    // ========== 1. 전투 데이터 저장 ==========
+    CombatAttacker = Attacker;
+    CombatDefender = nullptr; // 도시는 유닛이 아니므로 nullptr
+    CurrentCombatResult = CombatResult;
+    bIsInCombat = true;
+    bIsCityCombat = true;
+    bIsRangedCombat = false; // 도시 공격은 근거리/원거리 구분 없음
+
+    // ========== 2. 위치 정보 저장 ==========
+    // 공격자 원래 위치 저장 (복귀용)
+    FVector AttackerWorldPos = Attacker->GetActorLocation();
+    AttackerOriginalWorldPosition = AttackerWorldPos;
+    AttackerOriginalHexPosition = WorldComponent->WorldToHex(AttackerWorldPos);
+
+    // 도시 위치 저장
+    CityHexPosition = CityHex;
+    CityWorldPosition = WorldComponent->HexToWorld(CityHex);
+
+    // ========== 3. 공격자 컴포넌트 초기화 ==========
+    // 몽타주 델리게이트 바인딩 (공격자)
+    // 주의: 기존 바인딩이 있을 수 있으므로 먼저 제거 후 추가
+    if (USkeletalMeshComponent* MeshComp = Attacker->GetMesh())
+    {
+        if (UAnimInstance* AnimInstance = MeshComp->GetAnimInstance())
+        {
+            AnimInstance->OnMontageEnded.RemoveAll(this);
+            AnimInstance->OnMontageEnded.AddDynamic(this, &UUnitVisualizationComponent::OnMontageEnded);
+        }
+    }
+
+    // ========== 4. 초기 상태 설정 ==========
+    CombatState = ECombatVisualizationState::RotatingToCity;
+}
+
+void UUnitVisualizationComponent::UpdateAttackerRotationToCity(float DeltaTime)
+{
+    AUnitCharacterBase* Attacker = Cast<AUnitCharacterBase>(GetOwner());
+    if (!Attacker)
+    {
+        return;
+    }
+
+    // 도시 위치
+    FVector CityLocation = CityWorldPosition;
+    
+    // 회전 처리
+    RotateUnitToFaceTarget(Attacker, CityLocation, DeltaTime);
+
+    // 회전 완료 체크
+    FVector AttackerLocation = Attacker->GetActorLocation();
+    FVector Direction = (CityLocation - AttackerLocation).GetSafeNormal();
+    Direction.Z = 0.0f;
+    Direction.Normalize();
+
+    FRotator TargetRotation = Direction.Rotation();
+    FRotator CurrentRotation = Attacker->GetActorRotation();
+    float YawDifference = FMath::Abs(FMath::FindDeltaAngleDegrees(CurrentRotation.Yaw, TargetRotation.Yaw));
+
+    if (YawDifference <= RotationTolerance)
+    {
+        Attacker->SetActorRotation(TargetRotation);
+        // 회전 완료 - 공격 애니메이션 시작
+        CombatState = ECombatVisualizationState::AttackingCity;
+        PlayAttackerAttackMontageAgainstCity();
+    }
+}
+
+void UUnitVisualizationComponent::PlayAttackerAttackMontageAgainstCity()
+{
+    AUnitCharacterBase* Attacker = Cast<AUnitCharacterBase>(GetOwner());
+    if (!Attacker)
+    {
+        return;
+    }
+
+    // UnitData에서 AttackMontage 가져오기
+    UAnimMontage* MontageToPlay = nullptr;
+    if (const FUnitData* UnitData = Attacker->GetUnitData())
+    {
+        MontageToPlay = UnitData->AttackMontage;
+    }
+    else
+    {
+        MontageToPlay = AttackMontage;
+    }
+
+    if (!MontageToPlay)
+    {
+        // 몽타주가 없으면 바로 복귀 시작
+        StartReturningFromCity();
+        return;
+    }
+
+    PlayMontage(MontageToPlay, Attacker);
+}
+
+void UUnitVisualizationComponent::StartReturningFromCity()
+{
+    AUnitCharacterBase* OwnerUnit = Cast<AUnitCharacterBase>(GetOwner());
+    if (!OwnerUnit || !WorldComponent)
+    {
+        return;
+    }
+
+    // 공격자인지 확인
+    if (!CombatAttacker.IsValid() || OwnerUnit != CombatAttacker.Get())
+    {
+        return;
+    }
+
+    // 원래 위치의 월드 좌표 가져오기
+    FVector OriginWorldPosition = AttackerOriginalWorldPosition;
+
+    // 복귀 상태 설정 및 전투 시각화 전용 이동 시작
+    CombatState = ECombatVisualizationState::ReturningFromCity;
+    StartCombatMovement(OriginWorldPosition);
+}
+
+void UUnitVisualizationComponent::CompleteCityCombatVisualization()
+{
+    AUnitCharacterBase* Attacker = Cast<AUnitCharacterBase>(GetOwner());
+    if (!Attacker || !CombatAttacker.IsValid() || Attacker != CombatAttacker.Get())
+    {
+        return;
+    }
+
+    // UnitManager에 전투 완료 알림
+    if (UnitManager && CombatAttacker.IsValid())
+    {
+        FVector2D AttackerHex = AttackerOriginalHexPosition;
+        FVector2D CityHex = CityHexPosition;
+        
+        // 도시는 유닛이 아니므로 nullptr 전달
+        UnitManager->OnCombatVisualizationComplete(CombatAttacker.Get(), nullptr, CurrentCombatResult, AttackerHex, CityHex);
+    }
+
+    // 공격자 자신 초기화
+    StopCombatVisualization();
+}

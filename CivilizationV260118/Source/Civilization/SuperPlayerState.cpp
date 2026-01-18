@@ -463,14 +463,20 @@ void ASuperPlayerState::ProcessTurnResources()
                 {
                     if (UUnitManager* UnitManager = SuperGameInst->GetUnitManager())
                     {
-                        // 도시 좌표에 직접 유닛 소환 (PlayerIndex 전달)
-                        AUnitCharacterBase* SpawnedUnit = UnitManager->SpawnUnitAtHex(CityCoordinate, CompletedUnitName, PlayerIndex);
-                        if (SpawnedUnit)
+                        // 도시 주변 1칸 내에서 소환 가능한 타일 찾기
+                        FVector2D SpawnHex = UnitManager->FindSpawnLocationNearCity(CityCoordinate);
+                        if (SpawnHex != FVector2D(-1, -1))
                         {
-                            // 유닛 소환 성공 - Population 증가
-                            Population++;
-                            OnPopulationChanged.Broadcast(Population);
+                            // 찾은 타일에 유닛 소환 (PlayerIndex 전달)
+                            AUnitCharacterBase* SpawnedUnit = UnitManager->SpawnUnitAtHex(SpawnHex, CompletedUnitName, PlayerIndex);
+                            if (SpawnedUnit)
+                            {
+                                // 유닛 소환 성공 - Population 증가
+                                Population++;
+                                OnPopulationChanged.Broadcast(Population);
+                            }
                         }
+                        // SpawnHex가 -1이어도 특별한 처리 없음 (다음 턴에 다시 시도 가능)
                     }
                 }
             }
@@ -925,18 +931,29 @@ bool ASuperPlayerState::PurchaseUnitWithGold(FName UnitName)
         {
             if (UUnitManager* UnitManager = SuperGameInst->GetUnitManager())
             {
-                // 도시 좌표에 유닛 소환 (PlayerIndex 전달하여 올바른 소유자 설정)
-                AUnitCharacterBase* SpawnedUnit = UnitManager->SpawnUnitAtHex(CityCoordinate, UnitName, PlayerIndex);
-                if (SpawnedUnit)
+                // 도시 주변 1칸 내에서 소환 가능한 타일 찾기
+                FVector2D SpawnHex = UnitManager->FindSpawnLocationNearCity(CityCoordinate);
+                if (SpawnHex != FVector2D(-1, -1))
                 {
-                    // 유닛 소환 성공 - Population 증가
-                    Population++;
-                    OnPopulationChanged.Broadcast(Population);
-                    return true;
+                    // 찾은 타일에 유닛 소환 (PlayerIndex 전달하여 올바른 소유자 설정)
+                    AUnitCharacterBase* SpawnedUnit = UnitManager->SpawnUnitAtHex(SpawnHex, UnitName, PlayerIndex);
+                    if (SpawnedUnit)
+                    {
+                        // 유닛 소환 성공 - Population 증가
+                        Population++;
+                        OnPopulationChanged.Broadcast(Population);
+                        return true;
+                    }
+                    else
+                    {
+                        // 유닛 소환 실패 시 골드 환불
+                        AddGold(GoldCost);
+                        return false;
+                    }
                 }
                 else
                 {
-                    // 유닛 소환 실패 시 골드 환불
+                    // 소환 가능한 타일을 찾지 못함 → 골드 환불
                     AddGold(GoldCost);
                     return false;
                 }

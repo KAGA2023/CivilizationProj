@@ -7,6 +7,7 @@
 #include "../World/WorldComponent.h"
 #include "../World/WorldStruct.h"
 #include "../SuperGameInstance.h"
+#include "../City/CityComponent.h"
 
 UUnitCombatComponent::UUnitCombatComponent()
 {
@@ -241,6 +242,171 @@ bool UUnitCombatComponent::CanExecuteCombat(AUnitCharacterBase* Attacker, AUnitC
     }
 
     return true;
+}
+
+bool UUnitCombatComponent::CanExecuteCombatAgainstCity(AUnitCharacterBase* Attacker, UCityComponent* CityComponent, FVector2D AttackerHex, FVector2D CityHex) const
+{
+    // 1. 유효성 검사
+    if (!Attacker || !CityComponent)
+    {
+        return false;
+    }
+
+    // 2. 컴포넌트 검사
+    UUnitStatusComponent* AttackerStatus = GetStatusComponent(Attacker);
+    if (!AttackerStatus)
+    {
+        return false;
+    }
+
+    // 3. 유효한 유닛인지 확인
+    if (!AttackerStatus->IsValid())
+    {
+        return false;
+    }
+
+    // 4. 이미 죽은 유닛인지 확인
+    if (AttackerStatus->IsDead())
+    {
+        return false;
+    }
+
+    // 5. 공격 가능 여부 확인
+    if (!AttackerStatus->CanAttack())
+    {
+        return false;
+    }
+
+    // 6. 도시 생존 여부 확인
+    if (CityComponent->GetCurrentHealth() <= 0)
+    {
+        return false;
+    }
+
+    // 7. Hex 파라미터가 제공된 경우 사거리/층수 검증 추가
+    if (AttackerHex != FVector2D::ZeroVector && CityHex != FVector2D::ZeroVector)
+    {
+        // WorldComponent 가져오기
+        UWorld* World = GetWorld();
+        if (!World)
+        {
+            return false;
+        }
+
+        USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance());
+        if (!SuperGameInst)
+        {
+            return false;
+        }
+
+        UWorldComponent* WorldComponent = SuperGameInst->GetGeneratedWorldComponent();
+        if (!WorldComponent)
+        {
+            return false;
+        }
+
+        // 사거리 검증
+        int32 BaseAttackRange = AttackerStatus->GetRange();
+        int32 AttackRange = BaseAttackRange;
+
+        // 원거리 유닛인 경우 Range 보너스 적용
+        if (BaseAttackRange > 1)
+        {
+            int32 RangeBonus = CalculateRangeBonus(AttackerHex);
+            AttackRange += RangeBonus;
+        }
+
+        int32 HexDistance = WorldComponent->GetHexDistance(AttackerHex, CityHex);
+
+        // 사거리 밖이면 공격 불가
+        if (HexDistance > AttackRange)
+        {
+            return false;
+        }
+
+        // Range == 1인 근접 공격일 때만 층수 차이 체크
+        if (BaseAttackRange == 1)
+        {
+            int32 AttackerFloor = GetFloorLevelAtHex(AttackerHex);
+            int32 CityFloor = GetFloorLevelAtHex(CityHex);
+            int32 FloorDifference = FMath::Abs(AttackerFloor - CityFloor);
+
+            // 층수 차이가 2 이상이면 공격 불가
+            if (FloorDifference >= 2)
+            {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+FCombatResult UUnitCombatComponent::ExecuteCombatAgainstCity(AUnitCharacterBase* Attacker, UCityComponent* CityComponent, int32 HexDistance, FVector2D AttackerHex, FVector2D CityHex)
+{
+    FCombatResult Result;
+
+    // 1. 전투 전 검증 (Hex 좌표 포함하여 사거리/층수 검증)
+    if (!CanExecuteCombatAgainstCity(Attacker, CityComponent, AttackerHex, CityHex))
+    {
+        return Result;
+    }
+
+    // 2. 컴포넌트 가져오기
+    UUnitStatusComponent* AttackerStatus = GetStatusComponent(Attacker);
+    if (!AttackerStatus)
+    {
+        return Result;
+    }
+
+    // ========== 1단계: 스탯 가져오기 ==========
+    int32 BaseAttackerAttackStrength = AttackerStatus->GetAttackStrength();
+    int32 AttackerCurrentHealth = AttackerStatus->GetCurrentHealth();
+    int32 AttackerMaxHealth = AttackerStatus->GetMaxHealth();
+    int32 CityCurrentHealth = CityComponent->GetCurrentHealth();
+    int32 CityMaxHealth = CityComponent->GetMaxHealth();
+
+    // ========== 2단계: 체력 비율 기반 데미지 계산 ==========
+    int32 BaseAttackDamage = CalculateAttackDamage(BaseAttackerAttackStrength, AttackerCurrentHealth, AttackerMaxHealth);
+
+    // ========== 3단계: 지형 보너스 적용 ==========
+    int32 AttackerRange = AttackerStatus->GetRange();
+    int32 AttackerCombatBonus = 0;
+
+    // 공격자 보너스 계산
+    if (AttackerRange > 1)
+    {
+        // 원거리 유닛: 지형 보너스 없음 (Range 보너스는 사거리 체크에만 사용)
+        AttackerCombatBonus = 0;
+    }
+    else
+    {
+        // 근접 유닛: 지형 보너스 적용
+        AttackerCombatBonus = CalculateCombatBonus(AttackerHex, CityHex);
+    }
+
+    // ========== 4단계: 최종 데미지 계산 ==========
+    int32 FinalAttackDamage = BaseAttackDamage + AttackerCombatBonus;
+
+    // ========== 5단계: 데미지 적용 ==========
+    // 도시에게 데미지 적용
+    CityComponent->TakeDamage(FinalAttackDamage);
+
+    // 도시 생존 여부 확인
+    bool bCityAlive = (CityComponent->GetCurrentHealth() > 0);
+
+    // ========== 6단계: 결과 확인 ==========
+    Result.bAttackerAlive = true;  // 도시는 반격 없으므로 항상 true
+    Result.bDefenderAlive = bCityAlive;
+    Result.AttackerDamageDealt = FinalAttackDamage;
+    Result.DefenderDamageDealt = 0;  // 도시는 반격 없음
+    Result.AttackerDamageTaken = 0;  // 도시는 반격 없음
+    Result.DefenderDamageTaken = FinalAttackDamage;
+
+    // ========== 7단계: 상태 업데이트 ==========
+    AttackerStatus->SetHasAttacked(true);
+
+    return Result;
 }
 
 int32 UUnitCombatComponent::CalculateAttackDamage(int32 BaseAttackStrength, int32 CurrentHealth, int32 MaxHealth) const

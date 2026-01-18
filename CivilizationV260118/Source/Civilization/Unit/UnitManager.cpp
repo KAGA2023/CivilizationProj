@@ -11,6 +11,7 @@
 #include "../SuperPlayerState.h"
 #include "../AICon/UnitAIController.h"
 #include "../AIPlayer/AIPlayerManager.h"
+#include "../City/CityComponent.h"
 #include "Engine/Engine.h"
 
 UUnitManager::UUnitManager()
@@ -120,6 +121,62 @@ AUnitCharacterBase* UUnitManager::SpawnUnitAtHex(FVector2D HexPosition, const FN
     }
 
     return NewUnit;
+}
+
+FVector2D UUnitManager::FindSpawnLocationNearCity(FVector2D CityHex) const
+{
+    // 기본 검증
+    if (!WorldComponent || !WorldComponent->IsValidHexPosition(CityHex))
+    {
+        return FVector2D(-1, -1);
+    }
+    
+    // 도시 주변 1칸 범위의 인접 타일 가져오기
+    TArray<FVector2D> NeighborHexes = WorldComponent->GetHexNeighbors(CityHex);
+    
+    // 유효한 소환 위치 필터링
+    TArray<FVector2D> ValidLocations;
+    
+    for (const FVector2D& Hex : NeighborHexes)
+    {
+        // 조건 1: 유효한 좌표인지 확인
+        if (!WorldComponent->IsValidHexPosition(Hex))
+        {
+            continue;
+        }
+        
+        // 조건 2: 타일이 존재하는지 확인
+        UWorldTile* Tile = WorldComponent->GetTileAtHex(Hex);
+        if (!Tile)
+        {
+            continue;
+        }
+        
+        // 조건 3: 통행 가능한지 확인 (바다 아님)
+        if (!Tile->IsPassable())
+        {
+            continue;
+        }
+        
+        // 조건 4: 유닛이 없는지 확인
+        if (GetUnitAtHex(Hex) != nullptr)
+        {
+            continue;
+        }
+        
+        // 모든 조건 통과 → 유효한 소환 위치
+        ValidLocations.Add(Hex);
+    }
+    
+    // 유효한 위치가 없으면 실패
+    if (ValidLocations.Num() == 0)
+    {
+        return FVector2D(-1, -1);
+    }
+    
+    // 랜덤 선택
+    int32 RandomIndex = FMath::RandRange(0, ValidLocations.Num() - 1);
+    return ValidLocations[RandomIndex];
 }
 
 TArray<AUnitCharacterBase*> UUnitManager::GetAllUnits() const
@@ -275,6 +332,12 @@ FVector2D UUnitManager::GetHexPositionForUnit(AUnitCharacterBase* Unit) const
 bool UUnitManager::CanPlaceUnitAtHex(FVector2D HexPosition, AUnitCharacterBase* MovingUnit) const
 {
     if (!WorldComponent || !WorldComponent->IsValidHexPosition(HexPosition))
+    {
+        return false;
+    }
+    
+    // 도시 타일인지 확인 (통행불가)
+    if (WorldComponent->IsCityAtHex(HexPosition))
     {
         return false;
     }
@@ -492,6 +555,12 @@ TArray<FVector2D> UUnitManager::FindPath(FVector2D StartHex, FVector2D EndHex) c
                 continue;
             }
 
+            // 도시 타일은 경로에서 제외 (목표 타일은 제외 - 목표 타일은 CanPlaceUnitAtHex에서 체크)
+            if (NeighborHex != EndHex && WorldComponent->IsCityAtHex(NeighborHex))
+            {
+                continue;
+            }
+
             // 유닛이 있는 타일은 경로에서 제외 (목표 타일은 제외 - 목표 타일은 CanPlaceUnitAtHex에서 체크)
             if (NeighborHex != EndHex && GetUnitAtHex(NeighborHex) != nullptr)
             {
@@ -566,6 +635,12 @@ TArray<FVector2D> UUnitManager::FindPathWithMovementCost(FVector2D StartHex, FVe
 bool UUnitManager::CanMoveToHex(FVector2D HexPosition) const
 {
     if (!WorldComponent)
+    {
+        return false;
+    }
+    
+    // 도시 타일인지 확인 (통행불가)
+    if (WorldComponent->IsCityAtHex(HexPosition))
     {
         return false;
     }
@@ -949,17 +1024,21 @@ void UUnitManager::HandleCombatSelection(UWorldTile* ClickedTile)
     // 첫 번째 선택이 있고 두 번째 선택이 없으면 두 번째로 설정
     else if (!HasCombatSecondSelection())
     {
-        // 해당 타일에 유닛이 있는지 확인
-        AUnitCharacterBase* UnitAtTile = GetUnitAtHex(HexPos);
-        if (!UnitAtTile)
-        {
-            return; // 유닛이 없으면 선택하지 않음
-        }
-        
         // 같은 타일을 선택한 경우 즉시 선택 초기화
         if (CombatFirstSelectedTile && CombatFirstSelectedTile->GetGridPosition() == HexPos)
         {
             ClearCombatSelection(); // 첫 번째 선택까지 모두 초기화
+            return;
+        }
+        
+        // 해당 타일에 유닛이 있는지 확인
+        AUnitCharacterBase* UnitAtTile = GetUnitAtHex(HexPos);
+        // 도시 타일인지 확인
+        bool bIsCityTile = WorldComponent->IsCityAtHex(HexPos);
+        
+        // 유닛도 없고 도시도 아니면 선택하지 않음
+        if (!UnitAtTile && !bIsCityTile)
+        {
             return;
         }
         
@@ -1053,56 +1132,141 @@ void UUnitManager::ExecuteCombatBetweenSelectedUnits()
     
     // 첫 번째 타일의 유닛 가져오기 (공격자)
     AUnitCharacterBase* Attacker = GetUnitAtHex(FirstHexPos);
-    // 두 번째 타일의 유닛 가져오기 (방어자)
-    AUnitCharacterBase* Defender = GetUnitAtHex(SecondHexPos);
-    
-    if (!Attacker || !Defender)
+    if (!Attacker)
     {
         return;
     }
     
-    // 전투 컴포넌트 가져오기 (공격자의 컴포넌트 사용)
-    UUnitCombatComponent* CombatComp = Attacker->GetUnitCombatComponent();
-    if (!CombatComp)
+    // 두 번째 타일이 도시 타일인지 확인
+    bool bIsCityTile = WorldComponent->IsCityAtHex(SecondHexPos);
+    
+    // 도시 공격인 경우
+    if (bIsCityTile)
     {
-        return;
-    }
-    
-    // 거리 계산
-    int32 HexDistance = WorldComponent->GetHexDistance(FirstHexPos, SecondHexPos);
-    
-    // 전투 가능 여부 확인 (Hex 좌표 포함하여 사거리/층수 검증)
-    if (!CombatComp->CanExecuteCombat(Attacker, Defender, FirstHexPos, SecondHexPos))
-    {
-        return;
-    }
-    
-    // 전투 계산 즉시 실행 (데미지 적용 포함)
-    FCombatResult CombatResult = CombatComp->ExecuteCombat(Attacker, Defender, HexDistance, FirstHexPos, SecondHexPos);
-    
-    // 전투 시작 시점에 UI 닫기 위해 델리게이트 브로드캐스트
-    OnCombatExecuted.Broadcast();
-    
-    // 공격자의 UnitVisualizationComponent 가져오기
-    UUnitVisualizationComponent* AttackerVisComp = Attacker->GetUnitVisualizationComponent();
-    if (AttackerVisComp)
-    {
-        // WorldComponent 설정 (없으면)
-        if (!AttackerVisComp->GetWorldComponent())
+        // 도시 소유 플레이어 찾기
+        UCityComponent* CityComponent = nullptr;
+        if (UWorld* World = GetWorld())
         {
-            AttackerVisComp->SetWorldComponent(WorldComponent);
+            if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
+            {
+                // 모든 플레이어의 도시 좌표 확인
+                int32 TotalPlayerCount = SuperGameInst->GetPlayerStateCount();
+                for (int32 i = 0; i < TotalPlayerCount; i++)
+                {
+                    if (ASuperPlayerState* PlayerState = SuperGameInst->GetPlayerState(i))
+                    {
+                        if (PlayerState->HasCity() && PlayerState->GetCityCoordinate() == SecondHexPos)
+                        {
+                            CityComponent = PlayerState->GetCityComponent();
+                            break;
+                        }
+                    }
+                }
+            }
         }
         
-        // UnitManager 설정
-        AttackerVisComp->SetUnitManager(this);
+        if (!CityComponent)
+        {
+            return;
+        }
         
-        // 전투 시각화 시작
-        AttackerVisComp->StartCombatVisualization(Attacker, Defender, CombatResult);
+        // 전투 컴포넌트 가져오기 (공격자의 컴포넌트 사용)
+        UUnitCombatComponent* CombatComp = Attacker->GetUnitCombatComponent();
+        if (!CombatComp)
+        {
+            return;
+        }
+        
+        // 거리 계산
+        int32 HexDistance = WorldComponent->GetHexDistance(FirstHexPos, SecondHexPos);
+        
+        // 도시 공격 가능 여부 확인
+        if (!CombatComp->CanExecuteCombatAgainstCity(Attacker, CityComponent, FirstHexPos, SecondHexPos))
+        {
+            return;
+        }
+        
+        // 도시 공격 계산 즉시 실행 (데미지 적용 포함)
+        FCombatResult CombatResult = CombatComp->ExecuteCombatAgainstCity(Attacker, CityComponent, HexDistance, FirstHexPos, SecondHexPos);
+        
+        // 전투 시작 시점에 UI 닫기 위해 델리게이트 브로드캐스트
+        OnCombatExecuted.Broadcast();
+        
+        // 공격자의 UnitVisualizationComponent 가져오기
+        UUnitVisualizationComponent* AttackerVisComp = Attacker->GetUnitVisualizationComponent();
+        if (AttackerVisComp)
+        {
+            // WorldComponent 설정 (없으면)
+            if (!AttackerVisComp->GetWorldComponent())
+            {
+                AttackerVisComp->SetWorldComponent(WorldComponent);
+            }
+            
+            // UnitManager 설정
+            AttackerVisComp->SetUnitManager(this);
+            
+            // 도시 공격 시각화 시작
+            AttackerVisComp->StartCombatVisualizationAgainstCity(Attacker, CityComponent, SecondHexPos, CombatResult);
+        }
+        else
+        {
+            // UnitVisualizationComponent가 없으면 즉시 결과 처리 (폴백)
+            OnCombatVisualizationComplete(Attacker, nullptr, CombatResult, FirstHexPos, SecondHexPos);
+        }
     }
+    // 유닛 vs 유닛 전투인 경우
     else
     {
-        // UnitVisualizationComponent가 없으면 즉시 결과 처리 (폴백)
-        OnCombatVisualizationComplete(Attacker, Defender, CombatResult, FirstHexPos, SecondHexPos);
+        // 두 번째 타일의 유닛 가져오기 (방어자)
+        AUnitCharacterBase* Defender = GetUnitAtHex(SecondHexPos);
+        if (!Defender)
+        {
+            return;
+        }
+        
+        // 전투 컴포넌트 가져오기 (공격자의 컴포넌트 사용)
+        UUnitCombatComponent* CombatComp = Attacker->GetUnitCombatComponent();
+        if (!CombatComp)
+        {
+            return;
+        }
+        
+        // 거리 계산
+        int32 HexDistance = WorldComponent->GetHexDistance(FirstHexPos, SecondHexPos);
+        
+        // 전투 가능 여부 확인 (Hex 좌표 포함하여 사거리/층수 검증)
+        if (!CombatComp->CanExecuteCombat(Attacker, Defender, FirstHexPos, SecondHexPos))
+        {
+            return;
+        }
+        
+        // 전투 계산 즉시 실행 (데미지 적용 포함)
+        FCombatResult CombatResult = CombatComp->ExecuteCombat(Attacker, Defender, HexDistance, FirstHexPos, SecondHexPos);
+        
+        // 전투 시작 시점에 UI 닫기 위해 델리게이트 브로드캐스트
+        OnCombatExecuted.Broadcast();
+        
+        // 공격자의 UnitVisualizationComponent 가져오기
+        UUnitVisualizationComponent* AttackerVisComp = Attacker->GetUnitVisualizationComponent();
+        if (AttackerVisComp)
+        {
+            // WorldComponent 설정 (없으면)
+            if (!AttackerVisComp->GetWorldComponent())
+            {
+                AttackerVisComp->SetWorldComponent(WorldComponent);
+            }
+            
+            // UnitManager 설정
+            AttackerVisComp->SetUnitManager(this);
+            
+            // 전투 시각화 시작
+            AttackerVisComp->StartCombatVisualization(Attacker, Defender, CombatResult);
+        }
+        else
+        {
+            // UnitVisualizationComponent가 없으면 즉시 결과 처리 (폴백)
+            OnCombatVisualizationComplete(Attacker, Defender, CombatResult, FirstHexPos, SecondHexPos);
+        }
     }
 }
 

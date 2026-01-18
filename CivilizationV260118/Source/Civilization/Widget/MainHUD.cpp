@@ -494,11 +494,22 @@ void UMainHUD::OnCombatTileHoverBeginHandler(UWorldTile* Tile)
 
 				FVector2D HoverHexPos = Tile->GetGridPosition();
 				
+				// WorldComponent 가져오기
+				UWorldComponent* WorldComponent = SuperGameInst->GetGeneratedWorldComponent();
+				if (!WorldComponent)
+				{
+					return;
+				}
+				
 				// 호버한 타일에 유닛이 있는지 확인
 				AUnitCharacterBase* Defender = UnitManager->GetUnitAtHex(HoverHexPos);
-				if (!Defender)
+				// 도시 타일인지 확인
+				bool bIsCityTile = WorldComponent->IsCityAtHex(HoverHexPos);
+				
+				// 유닛도 없고 도시도 아니면 무시
+				if (!Defender && !bIsCityTile)
 				{
-					return; // 유닛이 없으면 무시
+					return;
 				}
 
 				// 첫 번째 선택된 타일의 공격자 가져오기
@@ -529,19 +540,6 @@ void UMainHUD::OnCombatTileHoverBeginHandler(UWorldTile* Tile)
 					return; // 상태 컴포넌트가 없으면 무시
 				}
 
-				// UnitCombatComponent를 통한 통합 검증 (단순화!)
-				if (UUnitCombatComponent* CombatComp = Attacker->GetUnitCombatComponent())
-				{
-					if (!CombatComp->CanExecuteCombat(Attacker, Defender, AttackerHexPos, HoverHexPos))
-					{
-						return; // 공격 불가능
-					}
-				}
-				else
-				{
-					return; // 전투 컴포넌트가 없으면 무시
-				}
-
 				// 같은 타일을 호버한 경우 무시 (중복 방지)
 				if (bIsCombatUIOpen && CurrentCombatHoverTile == HoverHexPos)
 				{
@@ -554,11 +552,70 @@ void UMainHUD::OnCombatTileHoverBeginHandler(UWorldTile* Tile)
 					CloseCombatUI();
 				}
 
-				// 전투 UI 설정 및 표시
-				UnitCombatUIWidget->SetupForCombat(Attacker, Defender, AttackerHexPos, HoverHexPos);
-				UnitCombatUIWidget->SetVisibility(ESlateVisibility::Visible);
-				CurrentCombatHoverTile = HoverHexPos;
-				bIsCombatUIOpen = true;
+				// 도시 공격인 경우
+				if (bIsCityTile)
+				{
+					// 도시 소유 플레이어 찾기
+					UCityComponent* CityComponent = nullptr;
+					int32 TotalPlayerCount = SuperGameInst->GetPlayerStateCount();
+					for (int32 i = 0; i < TotalPlayerCount; i++)
+					{
+						if (ASuperPlayerState* PlayerState = SuperGameInst->GetPlayerState(i))
+						{
+							if (PlayerState->HasCity() && PlayerState->GetCityCoordinate() == HoverHexPos)
+							{
+								CityComponent = PlayerState->GetCityComponent();
+								break;
+							}
+						}
+					}
+					
+					if (!CityComponent)
+					{
+						return;
+					}
+					
+					// 도시 공격 가능 여부 확인
+					if (UUnitCombatComponent* CombatComp = Attacker->GetUnitCombatComponent())
+					{
+						if (!CombatComp->CanExecuteCombatAgainstCity(Attacker, CityComponent, AttackerHexPos, HoverHexPos))
+						{
+							return; // 공격 불가능
+						}
+					}
+					else
+					{
+						return; // 전투 컴포넌트가 없으면 무시
+					}
+					
+					// 도시 공격 UI 설정 및 표시
+					UnitCombatUIWidget->SetupForCombatAgainstCity(Attacker, CityComponent, AttackerHexPos, HoverHexPos);
+					UnitCombatUIWidget->SetVisibility(ESlateVisibility::Visible);
+					CurrentCombatHoverTile = HoverHexPos;
+					bIsCombatUIOpen = true;
+				}
+				// 유닛 vs 유닛 전투인 경우
+				else if (Defender)
+				{
+					// UnitCombatComponent를 통한 통합 검증 (단순화!)
+					if (UUnitCombatComponent* CombatComp = Attacker->GetUnitCombatComponent())
+					{
+						if (!CombatComp->CanExecuteCombat(Attacker, Defender, AttackerHexPos, HoverHexPos))
+						{
+							return; // 공격 불가능
+						}
+					}
+					else
+					{
+						return; // 전투 컴포넌트가 없으면 무시
+					}
+
+					// 전투 UI 설정 및 표시
+					UnitCombatUIWidget->SetupForCombat(Attacker, Defender, AttackerHexPos, HoverHexPos);
+					UnitCombatUIWidget->SetVisibility(ESlateVisibility::Visible);
+					CurrentCombatHoverTile = HoverHexPos;
+					bIsCombatUIOpen = true;
+				}
 			}
 		}
 	}
