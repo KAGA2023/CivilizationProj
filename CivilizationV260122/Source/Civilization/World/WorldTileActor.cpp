@@ -715,6 +715,9 @@ void AWorldTileActor::OnBeginCursorOver(UPrimitiveComponent* TouchedComponent)
 	// 전투 호버 델리게이트 브로드캐스트
 	OnCombatTileHoverBegin.Broadcast(TileData);
 	
+	// 타일 호버 시작 델리게이트 브로드캐스트
+	OnTileHoverBegin.Broadcast(TileData);
+	
 	// 구매 가능한 타일이고 위젯이 표시되어 있을 때 호버 효과 적용
 	if (bIsPurchaseableHighlighted && TileWidget && TileWidget->IsVisible())
 	{
@@ -735,6 +738,9 @@ void AWorldTileActor::OnEndCursorOver(UPrimitiveComponent* TouchedComponent)
 	
 	// 전투 호버 델리게이트 브로드캐스트
 	OnCombatTileHoverEnd.Broadcast(TileData);
+	
+	// 타일 호버 종료 델리게이트 브로드캐스트
+	OnTileHoverEnd.Broadcast(TileData);
 	
 	// 구매 가능한 타일이고 위젯이 표시되어 있을 때 호버 효과 제거
 	if (bIsPurchaseableHighlighted && TileWidget && TileWidget->IsVisible())

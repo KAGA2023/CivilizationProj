@@ -5,6 +5,7 @@
 #include "Components/Image.h"
 #include "Components/ProgressBar.h"
 #include "Components/Button.h"
+#include "TechUI.h"
 #include "../../SuperGameInstance.h"
 #include "../../SuperPlayerState.h"
 #include "../../World/WorldComponent.h"

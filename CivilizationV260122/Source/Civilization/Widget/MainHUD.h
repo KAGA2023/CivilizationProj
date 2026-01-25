@@ -156,6 +156,10 @@ protected:
 	UPROPERTY(BlueprintReadWrite, Category = "Widgets")
 	class UPauseMenuUI* PauseMenuUIWidget = nullptr;
 
+	// MouseUI 위젯 참조 (블루프린트에서 수동 할당)
+	UPROPERTY(BlueprintReadWrite, Category = "Widgets")
+	class UMouseUI* MouseUIWidget = nullptr;
+
 	// ========== 승리/패배 시스템 위젯 ==========
 	// PlayerWinUI 위젯 참조 (블루프린트에서 수동 할당)
 	UPROPERTY(BlueprintReadWrite, Category = "Widgets")
@@ -184,6 +188,10 @@ protected:
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void BindCombatTileHoverDelegates();
 
+	// 타일 호버 델리게이트 바인딩 함수
+	UFUNCTION(BlueprintCallable, Category = "HUD")
+	void BindTileHoverDelegates();
+
 	// UnitManager의 전투 실행 완료 델리게이트 바인딩
 	void BindCombatExecutedDelegate();
 
@@ -193,6 +201,13 @@ protected:
 
 	UFUNCTION()
 	void OnCombatTileHoverEndHandler(class UWorldTile* Tile);
+
+	// 타일 호버 핸들러 함수들
+	UFUNCTION()
+	void OnTileHoverBeginHandler(class UWorldTile* Tile);
+
+	UFUNCTION()
+	void OnTileHoverEndHandler(class UWorldTile* Tile);
 
 	// 전투 실행 완료 핸들러
 	UFUNCTION()
@@ -223,6 +238,10 @@ protected:
 	// AIPlayerLoseUI 위젯 설정 함수
 	UFUNCTION(BlueprintCallable, Category = "Widgets")
 	void SetAIPlayerLoseUI(class UAIPlayerLoseUI* InAIPlayerLoseUI);
+
+	// MouseUI 위젯 설정 함수
+	UFUNCTION(BlueprintCallable, Category = "Widgets")
+	void SetMouseUI(class UMouseUI* InMouseUI);
 
 	// ========== 승리/패배 위젯 표시 함수 ==========
 	// 플레이어 승리 위젯 표시
@@ -279,7 +298,11 @@ protected:
 	// 0.5초 지연 후 바인딩을 위한 타이머
 	FTimerHandle BindCombatTileHoverTimerHandle;
 
+	// 0.5초 지연 후 바인딩을 위한 타이머
+	FTimerHandle BindTileHoverTimerHandle;
+
 	virtual void NativeConstruct() override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	virtual void NativeDestruct() override;
 };
 

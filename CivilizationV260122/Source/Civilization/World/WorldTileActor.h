@@ -25,6 +25,12 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCombatTileHoverBegin, UWorldTile*
 // 전투 타일 호버 종료 이벤트
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCombatTileHoverEnd, UWorldTile*, Tile);
 
+// 타일 호버 시작 이벤트
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnTileHoverBegin, UWorldTile*, Tile);
+
+// 타일 호버 종료 이벤트
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnTileHoverEnd, UWorldTile*, Tile);
+
 UCLASS()
 class CIVILIZATION_API AWorldTileActor : public AActor
 {
@@ -156,5 +162,13 @@ public:
 	// 전투 타일 호버 종료 이벤트
 	UPROPERTY(BlueprintAssignable, Category = "Combat Events")
 	FOnCombatTileHoverEnd OnCombatTileHoverEnd;
+
+	// 타일 호버 시작 이벤트
+	UPROPERTY(BlueprintAssignable, Category = "Tile Events")
+	FOnTileHoverBegin OnTileHoverBegin;
+
+	// 타일 호버 종료 이벤트
+	UPROPERTY(BlueprintAssignable, Category = "Tile Events")
+	FOnTileHoverEnd OnTileHoverEnd;
 };
 

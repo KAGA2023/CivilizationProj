@@ -26,11 +26,13 @@
 #include "../Diplomacy/DiplomacyStruct.h"
 #include "UnitWidget/BuildFacilityUI.h"
 #include "CombatWidget/UnitCombatUI.h"
+#include "MouseWidget/MouseUI.h"
 #include "../Unit/UnitManager.h"
 #include "../Unit/UnitCharacterBase.h"
 #include "../Combat/UnitCombatComponent.h"
 #include "Engine/DataTable.h"
 #include "Kismet/GameplayStatics.h"
+#include "Blueprint/WidgetLayoutLibrary.h"
 
 void UMainHUD::NativeConstruct()
 {
@@ -79,6 +81,7 @@ void UMainHUD::NativeConstruct()
 		GetWorld()->GetTimerManager().SetTimer(BindBuilderTileTimerHandle, this, &UMainHUD::BindBuilderTileClickedDelegates, 0.5f, false);
 		GetWorld()->GetTimerManager().SetTimer(BindGeneralTileTimerHandle, this, &UMainHUD::BindGeneralTileClickedDelegates, 0.5f, false);
 		GetWorld()->GetTimerManager().SetTimer(BindCombatTileHoverTimerHandle, this, &UMainHUD::BindCombatTileHoverDelegates, 0.5f, false);
+		GetWorld()->GetTimerManager().SetTimer(BindTileHoverTimerHandle, this, &UMainHUD::BindTileHoverDelegates, 0.5f, false);
 	}
 
 	// BuildFacilityUI 위젯 초기화 (Hidden으로 설정)
@@ -345,6 +348,33 @@ void UMainHUD::BindCombatTileHoverDelegates()
 		{
 			TileActor->OnCombatTileHoverBegin.AddDynamic(this, &UMainHUD::OnCombatTileHoverBeginHandler);
 			TileActor->OnCombatTileHoverEnd.AddDynamic(this, &UMainHUD::OnCombatTileHoverEndHandler);
+		}
+	}
+}
+
+void UMainHUD::BindTileHoverDelegates()
+{
+	if (!GetWorld())
+	{
+		return;
+	}
+
+	// 모든 WorldTileActor 찾기
+	TArray<AActor*> FoundActors;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), AWorldTileActor::StaticClass(), FoundActors);
+
+	// 각 WorldTileActor의 타일 호버 델리게이트 바인딩
+	for (AActor* Actor : FoundActors)
+	{
+		if (AWorldTileActor* TileActor = Cast<AWorldTileActor>(Actor))
+		{
+			// 기존 바인딩 해제
+			TileActor->OnTileHoverBegin.RemoveDynamic(this, &UMainHUD::OnTileHoverBeginHandler);
+			TileActor->OnTileHoverEnd.RemoveDynamic(this, &UMainHUD::OnTileHoverEndHandler);
+			
+			// 새로운 바인딩
+			TileActor->OnTileHoverBegin.AddDynamic(this, &UMainHUD::OnTileHoverBeginHandler);
+			TileActor->OnTileHoverEnd.AddDynamic(this, &UMainHUD::OnTileHoverEndHandler);
 		}
 	}
 }
@@ -661,6 +691,22 @@ void UMainHUD::OnCombatTileHoverEndHandler(UWorldTile* Tile)
 	CloseCombatUI();
 }
 
+void UMainHUD::OnTileHoverBeginHandler(UWorldTile* Tile)
+{
+	if (MouseUIWidget && Tile)
+	{
+		MouseUIWidget->ShowTileInfo(Tile);
+	}
+}
+
+void UMainHUD::OnTileHoverEndHandler(UWorldTile* Tile)
+{
+	if (MouseUIWidget)
+	{
+		MouseUIWidget->HideTileInfo();
+	}
+}
+
 void UMainHUD::OnCombatExecutedHandler()
 {
 	// 전투 실행 완료 시 UI 닫기
@@ -732,6 +778,8 @@ void UMainHUD::NativeDestruct()
 				TileActor->OnGeneralTileClicked.RemoveDynamic(this, &UMainHUD::OnGeneralTileClickedHandler);
 				TileActor->OnCombatTileHoverBegin.RemoveDynamic(this, &UMainHUD::OnCombatTileHoverBeginHandler);
 				TileActor->OnCombatTileHoverEnd.RemoveDynamic(this, &UMainHUD::OnCombatTileHoverEndHandler);
+				TileActor->OnTileHoverBegin.RemoveDynamic(this, &UMainHUD::OnTileHoverBeginHandler);
+				TileActor->OnTileHoverEnd.RemoveDynamic(this, &UMainHUD::OnTileHoverEndHandler);
 			}
 		}
 
@@ -766,6 +814,30 @@ void UMainHUD::NativeDestruct()
 	ClearStrategicResourceSlots();
 
 	Super::NativeDestruct();
+}
+
+void UMainHUD::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+
+	// MouseUI가 설정되어 있으면 마우스 위치를 따라가도록 업데이트
+	if (MouseUIWidget)
+	{
+		// 뷰포트에서 마우스 위치 가져오기 (뷰포트 좌표)
+		FVector2D MousePositionViewport = UWidgetLayoutLibrary::GetMousePositionOnViewport(GetWorld());
+		
+		// MainHUD의 절대 위치를 빼서 상대 좌표로 변환 (FVector2f를 FVector2D로 변환)
+		FVector2D MainHUDPosition(MyGeometry.AbsolutePosition.X, MyGeometry.AbsolutePosition.Y);
+		FVector2D MousePositionLocal = MousePositionViewport - MainHUDPosition;
+		
+		// 마우스 오른쪽에 위젯 배치 (오프셋 추가)
+		FVector2D WidgetPosition = MousePositionLocal;
+		WidgetPosition.X -= 420.0f; // 마우스 오른쪽으로 20픽셀 오프셋
+		WidgetPosition.Y -= 280.0f; // 약간 위로 조정
+		
+		// 부모 위젯 기준으로 렌더링 위치 설정
+		MouseUIWidget->SetRenderTranslation(WidgetPosition);
+	}
 }
 
 void UMainHUD::UpdateStrategicResourceSlots()
@@ -1191,6 +1263,11 @@ void UMainHUD::SetAIPlayerLoseUI(UAIPlayerLoseUI* InAIPlayerLoseUI)
 		// 델리게이트 바인딩
 		BindAIPlayerLoseUIDelegate();
 	}
+}
+
+void UMainHUD::SetMouseUI(UMouseUI* InMouseUI)
+{
+	MouseUIWidget = InMouseUI;
 }
 
 void UMainHUD::OnPauseButtonClicked()
