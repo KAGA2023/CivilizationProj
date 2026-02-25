@@ -1,0 +1,547 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
+#include "WorldSpawner.h"
+#include "../SuperGameInstance.h"
+#include "../Unit/UnitManager.h"
+#include "../Facility/FacilityManager.h"
+#include "../Border/BorderManager.h"
+#include "../Diplomacy/DiplomacyManager.h"
+#include "../AIPlayer/AIPlayerManager.h"
+#include "../City/CityActor.h"
+#include "../SuperPlayerState.h"
+#include "../City/CityComponent.h"
+#include "../Research/ResearchComponent.h"
+#include "../SuperCameraPawn.h"
+#include "../SuperGameController.h"
+#include "../SuperGameModeBase.h"
+#include "../SaveLoad/SaveLoadManager.h"
+#include "../SaveLoad/SaveLoadStruct.h"
+#include "Engine/World.h"
+#include "Kismet/GameplayStatics.h"
+
+AWorldSpawner::AWorldSpawner()
+{
+	PrimaryActorTick.bCanEverTick = false;
+
+	WorldComponent = nullptr;
+	TileActorClass = AWorldTileActor::StaticClass();
+	bIsSpawning = false;
+	CurrentSpawnIndex = 0;
+}
+
+void AWorldSpawner::BeginPlay()
+{
+	Super::BeginPlay();
+	
+		// GameInstance에서 WorldComponent 가져오기 및 UnitManager, FacilityManager 생성
+		if (UWorld* World = GetWorld())
+		{
+			if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
+			{
+				WorldComponent = SuperGameInst->GetGeneratedWorldComponent();
+				
+				// UnitManager 생성 및 설정
+				if (WorldComponent)
+				{
+					UUnitManager* UnitManager = NewObject<UUnitManager>(this);
+					if (UnitManager)
+					{
+						UnitManager->SetWorldComponent(WorldComponent);
+						SuperGameInst->SetUnitManager(UnitManager);
+					}
+					
+					// FacilityManager 생성 및 설정
+					UFacilityManager* FacilityManager = NewObject<UFacilityManager>(this);
+					if (FacilityManager)
+					{
+						// 데이터 테이블 로드 (BeginPlay가 호출되지 않을 수 있으므로 직접 호출)
+						FacilityManager->LoadFacilityDataTable();
+						SuperGameInst->SetFacilityManager(FacilityManager);
+						
+						// 시설 변경 델리게이트 구독 (자원 메시 제어용)
+						FacilityManager->OnFacilityChanged.AddDynamic(this, &AWorldSpawner::OnFacilityChanged);
+					}
+					
+					// BorderManager 생성 및 설정
+					UBorderManager* BorderManager = NewObject<UBorderManager>(this);
+					if (BorderManager)
+					{
+						BorderManager->Initialize(WorldComponent, this);
+						SuperGameInst->SetBorderManager(BorderManager);
+					}
+
+					// DiplomacyManager 생성 및 설정
+					UDiplomacyManager* DiplomacyManager = NewObject<UDiplomacyManager>(this);
+					if (DiplomacyManager)
+					{
+						// 플레이어 수 기준으로 외교 데이터 초기화
+						const int32 NumPlayers = SuperGameInst->GetPlayerStateCount();
+						DiplomacyManager->Initialize(NumPlayers);
+						SuperGameInst->SetDiplomacyManager(DiplomacyManager);
+					}
+
+					// AIPlayerManager 생성 및 설정
+					UAIPlayerManager* AIPlayerManager = NewObject<UAIPlayerManager>(this);
+					if (AIPlayerManager)
+					{
+						SuperGameInst->SetAIPlayerManager(AIPlayerManager);
+						// Initialize()는 AssignCitiesToPlayers()에서 호출됨 (PlayerState들이 준비된 후)
+					}
+				}
+				
+				// LoadingTilesUI에서 SpawnAllTiles()를 호출할 때까지 대기
+				// 자동 스폰 제거 - LoadingTilesUI가 제어
+			}
+		}
+}
+
+void AWorldSpawner::SpawnAllTiles()
+{
+	if (!WorldComponent)
+	{
+		return;
+	}
+
+	if (bIsSpawning)
+	{
+		return;
+	}
+
+	// 기존 타일들 제거
+	ClearAllTiles();
+
+	// 모든 타일 가져오기
+	TArray<UWorldTile*> AllTiles = WorldComponent->GetAllTiles();
+	if (AllTiles.Num() == 0)
+	{
+		OnTileSpawnCompleted.Broadcast();
+		return;
+	}
+
+	// 비동기 스폰 준비
+	bIsSpawning = true;
+	TilesToSpawn = AllTiles;
+	CurrentSpawnIndex = 0;
+
+	// 타이머로 비동기 스폰 시작 (매 프레임 여러 개씩 스폰)
+	GetWorld()->GetTimerManager().SetTimer(
+		SpawnTimerHandle,
+		this,
+		&AWorldSpawner::ProcessAsyncSpawn,
+		0.016f, // ~60fps
+		true
+	);
+}
+
+void AWorldSpawner::ProcessAsyncSpawn()
+{
+	if (!bIsSpawning || CurrentSpawnIndex >= TilesToSpawn.Num())
+	{
+		// 스폰 완료
+		bIsSpawning = false;
+		GetWorld()->GetTimerManager().ClearTimer(SpawnTimerHandle);
+		
+		OnTileSpawnCompleted.Broadcast();
+		return;
+	}
+
+	// 한 프레임에 여러 개 스폰 (성능 조절 가능)
+	int32 SpawnPerFrame = 50; // 프레임당 50개씩 스폰
+	int32 SpawnCount = 0;
+
+	while (CurrentSpawnIndex < TilesToSpawn.Num() && SpawnCount < SpawnPerFrame)
+	{
+		UWorldTile* TileData = TilesToSpawn[CurrentSpawnIndex];
+		if (TileData)
+		{
+			SpawnTileActor(TileData);
+		}
+
+		CurrentSpawnIndex++;
+		SpawnCount++;
+	}
+}
+
+AWorldTileActor* AWorldSpawner::SpawnTileActor(UWorldTile* TileData)
+{
+	if (!TileData || !GetWorld())
+	{
+		return nullptr;
+	}
+
+	// 스폰 파라미터 설정
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = this;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// 타일 액터 스폰
+	FVector SpawnLocation = TileData->GetWorldPosition();
+	FRotator SpawnRotation = FRotator::ZeroRotator;
+
+	AWorldTileActor* TileActor = GetWorld()->SpawnActor<AWorldTileActor>(
+		TileActorClass,
+		SpawnLocation,
+		SpawnRotation,
+		SpawnParams
+	);
+
+	if (TileActor)
+	{
+		// 타일 데이터 설정
+		TileActor->SetTileData(TileData);
+
+		// 맵에 추가
+		FVector2D HexPos = TileData->GetGridPosition();
+		TileActors.Add(HexPos, TileActor);
+	}
+
+	return TileActor;
+}
+
+void AWorldSpawner::UpdateTileVisual(FVector2D HexPosition)
+{
+	if (AWorldTileActor* TileActor = GetTileActorAtHex(HexPosition))
+	{
+		TileActor->UpdateVisual();
+	}
+}
+
+AWorldTileActor* AWorldSpawner::GetTileActorAtHex(FVector2D HexPosition) const
+{
+	if (AWorldTileActor* const* FoundActor = TileActors.Find(HexPosition))
+	{
+		return *FoundActor;
+	}
+	return nullptr;
+}
+
+void AWorldSpawner::ClearAllTiles()
+{
+	// 모든 타일 액터 파괴
+	for (auto& Pair : TileActors)
+	{
+		if (Pair.Value)
+		{
+			Pair.Value->Destroy();
+		}
+	}
+
+	TileActors.Empty();
+}
+
+void AWorldSpawner::SpawnAllCities()
+{
+	if (!WorldComponent)
+	{
+		return;
+	}
+
+	// 기존 도시 제거
+	ClearAllCities();
+
+	TArray<FVector2D> CityHexes = WorldComponent->GetStartingCityHexes();
+	for (const FVector2D& Hex : CityHexes)
+	{
+		SpawnCityActorAtHex(Hex);
+	}
+}
+
+ACityActor* AWorldSpawner::SpawnCityActorAtHex(FVector2D Hex)
+{
+	if (!WorldComponent || !GetWorld())
+	{
+		return nullptr;
+	}
+
+	if (!CityActorClass)
+	{
+		CityActorClass = ACityActor::StaticClass();
+	}
+
+	FVector SpawnLocation = WorldComponent->HexToWorld(Hex);
+
+	// 지형 타입에 따라 Z 오프셋 적용
+	if (UWorldTile* Tile = WorldComponent->GetTileAtHex(Hex))
+	{
+		float ZOffset = 73.0f; // Plains 기본값
+		ELandType LandType = Tile->GetLandType();
+		if (LandType == ELandType::Hills)
+		{
+			ZOffset = 146.0f;
+		}
+		else if (LandType == ELandType::Mountains)
+		{
+			ZOffset = 219.0f;
+		}
+		SpawnLocation.Z += ZOffset;
+	}
+	FRotator SpawnRotation = FRotator::ZeroRotator;
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = this;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	ACityActor* City = GetWorld()->SpawnActor<ACityActor>(CityActorClass, SpawnLocation, SpawnRotation, SpawnParams);
+	if (City)
+	{
+		CityActors.Add(Hex, City);
+	}
+	return City;
+}
+
+ACityActor* AWorldSpawner::GetCityActorAtHex(FVector2D Hex) const
+{
+	if (ACityActor* const* Found = CityActors.Find(Hex))
+	{
+		return *Found;
+	}
+	return nullptr;
+}
+
+void AWorldSpawner::DestroyCityActorAtHex(FVector2D Hex)
+{
+	// 헥스 좌표를 정수로 보정 (소수점으로 인한 맵 조회 실패 방지)
+	const FVector2D IntHex(static_cast<float>(FMath::RoundToInt(Hex.X)), static_cast<float>(FMath::RoundToInt(Hex.Y)));
+
+	if (ACityActor* const* Found = CityActors.Find(IntHex))
+	{
+		ACityActor* City = *Found;
+		CityActors.Remove(IntHex);
+		if (City)
+		{
+			City->Destroy();
+		}
+	}
+}
+
+void AWorldSpawner::ClearAllCities()
+{
+	for (auto& Pair : CityActors)
+	{
+		if (Pair.Value)
+		{
+			Pair.Value->Destroy();
+		}
+	}
+	CityActors.Empty();
+}
+
+void AWorldSpawner::AssignCitiesToPlayers()
+{
+	// GameInstance에서 PlayerStates 가져오기
+	USuperGameInstance* GameInstance = nullptr;
+	if (UWorld* World = GetWorld())
+	{
+		GameInstance = Cast<USuperGameInstance>(World->GetGameInstance());
+	}
+	
+	if (!GameInstance || !WorldComponent)
+	{
+		return;
+	}
+	
+	// 도시 좌표 가져오기
+	TArray<FVector2D> CityHexes = WorldComponent->GetStartingCityHexes();
+	
+	// 각 플레이어에게 도시 배정 (순서대로)
+	for (int32 i = 0; i < CityHexes.Num(); i++)
+	{
+		// CityActor 가져오기
+		ACityActor* City = GetCityActorAtHex(CityHexes[i]);
+		if (!City)
+		{
+			continue;
+		}
+		
+		// PlayerState 가져오기
+		ASuperPlayerState* PlayerState = GameInstance->GetPlayerState(i);
+		if (!PlayerState)
+		{
+			continue;
+		}
+		
+		// 도시 컴포넌트 생성 및 배정
+		UCityComponent* CityComponent = NewObject<UCityComponent>(PlayerState);
+		if (CityComponent)
+		{
+			PlayerState->SetCityComponent(CityComponent);
+		}
+		
+		PlayerState->SetCityCoordinate(CityHexes[i]);
+		
+		// 기술 컴포넌트 생성 및 배정
+		UResearchComponent* ResearchComponent = NewObject<UResearchComponent>(PlayerState);
+		if (ResearchComponent)
+		{
+			PlayerState->SetResearchComponent(ResearchComponent);
+			// ResearchComponent 붙은 뒤 시설 해금 목록 갱신 (플레이어/AI 공통, 초기엔 연구 0개라 빈 목록)
+			PlayerState->UpdateAvailableFacilities();
+		}
+
+		// 도시 중심 반경 1칸의 타일들을 소유로 설정 (초기 도시 영역)
+		TArray<FVector2D> InitialTiles = WorldComponent->GetHexesInRadius(CityHexes[i], 1);
+		for (const FVector2D& TileCoord : InitialTiles)
+		{
+			PlayerState->AddOwnedTile(TileCoord, WorldComponent);
+		}
+	}
+	
+	// 도시 배정 완료 후 초기 국경선 업데이트
+	if (UBorderManager* BorderManager = GameInstance->GetBorderManager())
+	{
+		BorderManager->UpdateAllBorders();
+	}
+	
+	// 도시 배정 완료 후 AIPlayerManager 초기화 (이 시점에 PlayerState들이 모두 준비됨)
+	if (UAIPlayerManager* AIPlayerManager = GameInstance->GetAIPlayerManager())
+	{
+		AIPlayerManager->Initialize();
+	}
+	
+	// 도시 배정 완료 후 카메라를 플레이어 0의 도시로 이동
+	MoveCameraToPlayerCity();
+}
+
+void AWorldSpawner::MoveCameraToPlayerCity()
+{
+	if (!GetWorld() || !WorldComponent)
+	{
+		return;
+	}
+	
+	// GameInstance에서 플레이어 0의 PlayerState 가져오기
+	if (USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetWorld()->GetGameInstance()))
+	{
+		if (ASuperPlayerState* PlayerState0 = GameInstance->GetPlayerState(0))
+		{
+			// 플레이어 0이 도시를 가지고 있는지 확인
+			if (PlayerState0->HasCity())
+			{
+				// 도시 좌표 가져오기
+				FVector2D CityHex = PlayerState0->GetCityCoordinate();
+				
+				// Hex 좌표를 World 좌표로 변환
+				FVector CityWorldPos = WorldComponent->HexToWorld(CityHex);
+				
+				// PlayerController를 통해 카메라 Pawn 가져오기
+				if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
+				{
+					if (ASuperCameraPawn* CameraPawn = Cast<ASuperCameraPawn>(PC->GetPawn()))
+					{
+						// 현재 카메라의 Z 좌표 유지 (높이는 그대로)
+						FVector CurrentLocation = CameraPawn->GetActorLocation();
+						CityWorldPos.Z = CurrentLocation.Z;
+						
+						// 카메라 위치 설정
+						CameraPawn->SetActorLocation(CityWorldPos);
+					}
+				}
+			}
+		}
+	}
+}
+
+void AWorldSpawner::OnFacilityChanged(FVector2D TileCoordinate)
+{
+	// 해당 타일의 WorldTileActor 찾기
+	if (AWorldTileActor* TileActor = GetTileActorAtHex(TileCoordinate))
+	{
+		// FacilityManager를 통해 해당 타일에 시설이 있는지 확인
+		if (UWorld* World = GetWorld())
+		{
+			if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
+			{
+				if (UFacilityManager* FacilityManager = SuperGameInst->GetFacilityManager())
+				{
+					if (FacilityManager->HasFacilityAtTile(TileCoordinate))
+					{
+						// 시설이 있으면 숲·자원 메시 모두 숨기기 (시설 메시만 보이게)
+						TileActor->SetForestVisibility(false);
+						TileActor->SetResourceVisibility(false);
+					}
+					else
+					{
+						// 시설이 없으면 숲·자원 메시 다시 보이기 (타일 데이터 기준으로 복원)
+						TileActor->UpdateVisual();
+					}
+				}
+			}
+		}
+	}
+}
+
+void AWorldSpawner::RestoreGameStateFromSave(const FGameSaveData& SaveData)
+{
+	if (!GetWorld())
+	{
+		return;
+	}
+
+	USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(GetWorld()->GetGameInstance());
+	if (!SuperGameInst || !SuperGameInst->GetSaveLoadManager())
+	{
+		return;
+	}
+
+	USaveLoadManager* SaveLoadManager = SuperGameInst->GetSaveLoadManager();
+
+	// 라운드 정보 복원
+	ASuperGameModeBase* GameMode = Cast<ASuperGameModeBase>(GetWorld()->GetAuthGameMode());
+	if (GameMode && GameMode->GetTurnComponent())
+	{
+		GameMode->GetTurnComponent()->InitializeTurn(SaveData.CurrentRound);
+	}
+
+	// 플레이어 데이터 복원 (도시 데이터 포함)
+	for (const FPlayerSaveData& PlayerData : SaveData.PlayerDataArray)
+	{
+		ASuperPlayerState* PlayerState = SuperGameInst->GetPlayerState(PlayerData.PlayerIndex);
+		if (PlayerState)
+		{
+			SaveLoadManager->RestorePlayerData(PlayerData, PlayerState);
+		}
+	}
+
+	// 시설 정보 복원 (월드는 이미 GenerateWorldFromSaveData()로 생성되었으므로 시설만 복원)
+	if (WorldComponent && SuperGameInst->GetFacilityManager())
+	{
+		SaveLoadManager->RestoreWorldData(SaveData.WorldDataMap, WorldComponent, SuperGameInst->GetFacilityManager());
+	}
+
+	// 외교 데이터 복원
+	if (SuperGameInst->GetDiplomacyManager())
+	{
+		SaveLoadManager->RestoreDiplomacyData(
+			SaveData.DiplomacyStateMap,
+			SaveData.DiplomacyActionHistory,
+			SaveData.Attitudes,
+			SaveData.NextActionId,
+			SuperGameInst->GetDiplomacyManager()
+		);
+	}
+
+	// 유닛 데이터 복원 (마지막에 - 스폰이 필요하므로)
+	if (SuperGameInst->GetUnitManager())
+	{
+		for (const FPlayerSaveData& PlayerData : SaveData.PlayerDataArray)
+		{
+			for (const FUnitSaveData& UnitData : PlayerData.UnitDataArray)
+			{
+				SaveLoadManager->RestoreUnitData(UnitData, PlayerData.PlayerIndex);
+			}
+		}
+	}
+
+	// 타일 소유권 복원 완료 후 국경선 업데이트
+	if (UBorderManager* BorderManager = SuperGameInst->GetBorderManager())
+	{
+		BorderManager->UpdateAllBorders();
+	}
+
+	// AIPlayerManager 초기화 (로드 시에는 플레이어 데이터 복원 후에 초기화해야 함)
+	if (UAIPlayerManager* AIPlayerManager = SuperGameInst->GetAIPlayerManager())
+	{
+		AIPlayerManager->Initialize();
+	}
+}
+
