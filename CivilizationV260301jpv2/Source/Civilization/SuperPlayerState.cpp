@@ -1551,6 +1551,7 @@ void ASuperPlayerState::CleanupDefeatedPlayer()
             if (Tile)
             {
                 Tile->SetOwnerPlayerID(-1); // 중립으로 설정
+                Tile->SetOwned(false);      // 소유 여부 해제 (CanPlayerEnterTile에서 진입 가능하도록)
             }
         }
         
