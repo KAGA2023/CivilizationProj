@@ -29,6 +29,7 @@ void ULoadingUI::OnWorldGenerated(bool bSuccess)
 		return;
 	}
 	
+	USuperGameInstance* GameInst = Cast<USuperGameInstance>(GetWorld()->GetGameInstance());
 	// GameInstance에 월드 컴포넌트 저장
 	if (WorldComponent && GameInst)
 	{
@@ -47,6 +48,7 @@ void ULoadingUI::SetLoadMode(int32 SlotIndex)
 
 void ULoadingUI::GenerateWorldAsync()
 {
+	USuperGameInstance* GameInst = Cast<USuperGameInstance>(GetWorld()->GetGameInstance());
 	// 안전장치: 기존 월드 컴포넌트가 있으면 정리
 	if (GameInst)
 	{
@@ -136,6 +138,7 @@ void ULoadingUI::GenerateWorldAsync()
 
 void ULoadingUI::LoadLevelAsync()
 {
+	USuperGameInstance* GameInst = Cast<USuperGameInstance>(GetWorld()->GetGameInstance());
 	// SuperGameInstance에서 타겟 레벨 패키지 경로 가져오기
 	if (!GameInst)
 	{
@@ -183,6 +186,7 @@ void ULoadingUI::NativeConstruct()
 	targetPercent = 0.0f;
 	bLevelTransitionStarted = false; // 레벨 전환 플래그 초기화
 	
+	USuperGameInstance* GameInst = Cast<USuperGameInstance>(GetWorld()->GetGameInstance());
 	// GameInstance에서 로드 모드 정보 확인 (메인메뉴에서 로드하는 경우)
 	if (GameInst && GameInst->PendingLoadSlotIndex > 0)
 	{
@@ -232,6 +236,7 @@ void ULoadingUI::NativeTick(const FGeometry& MyGeometry, float DeltaTime)
 	if (curPercent >= 0.7f && !bLevelTransitionStarted)
 	{
 		bLevelTransitionStarted = true; // 레벨 전환 시작 플래그 설정
+		USuperGameInstance* GameInst = Cast<USuperGameInstance>(GetWorld()->GetGameInstance());
 		// 인게임 레벨로 전환
 		if (GameInst)
 		{

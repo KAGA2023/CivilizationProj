@@ -2343,34 +2343,66 @@ void UAIPlayerManager::ProcessCombatUnitCombatState(int32 PlayerIndex)
 			int32 HexDistance = WorldComponent->GetHexDistance(CombatUnitPosition, EnemyPosition);
 			FCombatResult CombatResult = CombatComp->ExecuteCombat(CombatUnit, TargetEnemy, HexDistance, CombatUnitPosition, EnemyPosition);
 
-			// 공격자의 UnitVisualizationComponent 가져오기
+			// AI 전투 시각화: 연속 전투 시 이전 복귀 등이 정리되도록 0.3초 지연 후 시작
 			UUnitVisualizationComponent* AttackerVisComp = CombatUnit->GetUnitVisualizationComponent();
-			if (AttackerVisComp)
+			if (World)
 			{
-				// WorldComponent 설정 (없으면)
-				if (!AttackerVisComp->GetWorldComponent())
+				World->GetTimerManager().ClearTimer(DelayedCombatStartTimerHandle);
+				FTimerDelegate DelayedStartDel;
+				DelayedStartDel.BindLambda([this, PlayerIndex, CombatUnit, TargetEnemy, CombatResult, CombatUnitPosition, EnemyPosition, AttackerVisComp, UnitManager, WorldComponent]()
 				{
-					AttackerVisComp->SetWorldComponent(WorldComponent);
-				}
-
-				// UnitManager 설정
-				AttackerVisComp->SetUnitManager(UnitManager);
-
-				// 전투 시각화 시작
-				AttackerVisComp->StartCombatVisualization(CombatUnit, TargetEnemy, CombatResult);
+					if (!IsValid(CombatUnit))
+					{
+						TransitionToNextState(PlayerIndex);
+						return;
+					}
+					if (AttackerVisComp)
+					{
+						if (!AttackerVisComp->GetWorldComponent())
+						{
+							AttackerVisComp->SetWorldComponent(WorldComponent);
+						}
+						AttackerVisComp->SetUnitManager(UnitManager);
+						if (IsValid(TargetEnemy))
+						{
+							AttackerVisComp->StartCombatVisualization(CombatUnit, TargetEnemy, CombatResult);
+						}
+						else
+						{
+							UnitManager->OnCombatVisualizationComplete(CombatUnit, TargetEnemy, CombatResult, CombatUnitPosition, EnemyPosition);
+						}
+					}
+					else
+					{
+						UnitManager->OnCombatVisualizationComplete(CombatUnit, TargetEnemy, CombatResult, CombatUnitPosition, EnemyPosition);
+					}
+					FAIPlayerStruct* AIPlayer = GetAIPlayerPtr(PlayerIndex);
+					if (AIPlayer)
+					{
+						AIPlayer->PendingCombatActions++;
+						AIPlayer->PendingPostAsyncState = EAITurnState::ProcessingCombatUnitCombat;
+					}
+					TransitionToNextState(PlayerIndex);
+				});
+				World->GetTimerManager().SetTimer(DelayedCombatStartTimerHandle, DelayedStartDel, 0.3f, false);
 			}
 			else
 			{
-				// UnitVisualizationComponent가 없으면 즉시 결과 처리 (폴백)
-				UnitManager->OnCombatVisualizationComplete(CombatUnit, TargetEnemy, CombatResult, CombatUnitPosition, EnemyPosition);
+				// World 없으면 지연 없이 즉시 실행
+				if (AttackerVisComp)
+				{
+					if (!AttackerVisComp->GetWorldComponent()) AttackerVisComp->SetWorldComponent(WorldComponent);
+					AttackerVisComp->SetUnitManager(UnitManager);
+					AttackerVisComp->StartCombatVisualization(CombatUnit, TargetEnemy, CombatResult);
+				}
+				else
+				{
+					UnitManager->OnCombatVisualizationComplete(CombatUnit, TargetEnemy, CombatResult, CombatUnitPosition, EnemyPosition);
+				}
+				AIPlayer->PendingCombatActions++;
+				AIPlayer->PendingPostAsyncState = EAITurnState::ProcessingCombatUnitCombat;
+				TransitionToNextState(PlayerIndex);
 			}
-
-			// PendingCombatActions 증가
-			AIPlayer->PendingCombatActions++;
-			AIPlayer->PendingPostAsyncState = EAITurnState::ProcessingCombatUnitCombat;
-
-			// 비동기 작업 대기 상태로 전환
-			TransitionToNextState(PlayerIndex);
 			return; // 여기서 종료, 콜백에서 재개
 		}
 		else
@@ -2427,34 +2459,58 @@ void UAIPlayerManager::ProcessCombatUnitCombatState(int32 PlayerIndex)
 				int32 HexDistance = WorldComponent->GetHexDistance(CombatUnitPosition, TargetCityCoord);
 				FCombatResult CombatResult = CombatComp->ExecuteCombatAgainstCity(CombatUnit, CityComponent, HexDistance, CombatUnitPosition, TargetCityCoord);
 
-				// 공격자의 UnitVisualizationComponent 가져오기
+				// AI 도시 공격 시각화: 0.3초 지연 후 시작
 				UUnitVisualizationComponent* AttackerVisComp = CombatUnit->GetUnitVisualizationComponent();
-				if (AttackerVisComp)
+				if (World)
 				{
-					// WorldComponent 설정 (없으면)
-					if (!AttackerVisComp->GetWorldComponent())
+					World->GetTimerManager().ClearTimer(DelayedCombatStartTimerHandle);
+					FTimerDelegate DelayedStartDel;
+					DelayedStartDel.BindLambda([this, PlayerIndex, CombatUnit, CityComponent, TargetCityCoord, CombatResult, CombatUnitPosition, AttackerVisComp, UnitManager, WorldComponent]()
 					{
-						AttackerVisComp->SetWorldComponent(WorldComponent);
-					}
-
-					// UnitManager 설정
-					AttackerVisComp->SetUnitManager(UnitManager);
-
-					// 도시 공격 시각화 시작
-					AttackerVisComp->StartCombatVisualizationAgainstCity(CombatUnit, CityComponent, TargetCityCoord, CombatResult);
+						if (!IsValid(CombatUnit))
+						{
+							TransitionToNextState(PlayerIndex);
+							return;
+						}
+						if (AttackerVisComp && IsValid(CityComponent))
+						{
+							if (!AttackerVisComp->GetWorldComponent())
+							{
+								AttackerVisComp->SetWorldComponent(WorldComponent);
+							}
+							AttackerVisComp->SetUnitManager(UnitManager);
+							AttackerVisComp->StartCombatVisualizationAgainstCity(CombatUnit, CityComponent, TargetCityCoord, CombatResult);
+						}
+						else
+						{
+							UnitManager->OnCombatVisualizationComplete(CombatUnit, nullptr, CombatResult, CombatUnitPosition, TargetCityCoord);
+						}
+						FAIPlayerStruct* AIPlayer = GetAIPlayerPtr(PlayerIndex);
+						if (AIPlayer)
+						{
+							AIPlayer->PendingCombatActions++;
+							AIPlayer->PendingPostAsyncState = EAITurnState::ProcessingCombatUnitCombat;
+						}
+						TransitionToNextState(PlayerIndex);
+					});
+					World->GetTimerManager().SetTimer(DelayedCombatStartTimerHandle, DelayedStartDel, 0.3f, false);
 				}
 				else
 				{
-					// UnitVisualizationComponent가 없으면 즉시 결과 처리 (폴백)
-					UnitManager->OnCombatVisualizationComplete(CombatUnit, nullptr, CombatResult, CombatUnitPosition, TargetCityCoord);
+					if (AttackerVisComp)
+					{
+						if (!AttackerVisComp->GetWorldComponent()) AttackerVisComp->SetWorldComponent(WorldComponent);
+						AttackerVisComp->SetUnitManager(UnitManager);
+						AttackerVisComp->StartCombatVisualizationAgainstCity(CombatUnit, CityComponent, TargetCityCoord, CombatResult);
+					}
+					else
+					{
+						UnitManager->OnCombatVisualizationComplete(CombatUnit, nullptr, CombatResult, CombatUnitPosition, TargetCityCoord);
+					}
+					AIPlayer->PendingCombatActions++;
+					AIPlayer->PendingPostAsyncState = EAITurnState::ProcessingCombatUnitCombat;
+					TransitionToNextState(PlayerIndex);
 				}
-
-				// PendingCombatActions 증가
-				AIPlayer->PendingCombatActions++;
-				AIPlayer->PendingPostAsyncState = EAITurnState::ProcessingCombatUnitCombat;
-
-				// 비동기 작업 대기 상태로 전환
-				TransitionToNextState(PlayerIndex);
 				return; // 여기서 종료, 콜백에서 재개
 			}
 			else

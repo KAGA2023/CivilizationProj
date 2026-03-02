@@ -90,6 +90,9 @@ protected:
 	// 다음 턴 전환 대기 타이머
 	FTimerHandle NextTurnDelayTimerHandle;
 
+	// AI 전투 시각화 시작 전 0.3초 지연 (연속 전투 시 이전 복귀 애니메이션 등이 정리되도록)
+	FTimerHandle DelayedCombatStartTimerHandle;
+
 	// ================= 상태 처리 함수들 (5단계에서 구현) =================
 
 	// 상태별 처리 함수들 (private, 나중에 구현)

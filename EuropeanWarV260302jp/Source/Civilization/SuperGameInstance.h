@@ -7,7 +7,6 @@
 #include "World/WorldStruct.h"
 #include "SaveLoad/SaveLoadStruct.h"
 #include "SuperGameInstance.generated.h"
-#define GameInst Cast<USuperGameInstance>(GetWorld()->GetGameInstance())
 
 UCLASS()
 class CIVILIZATION_API USuperGameInstance : public UGameInstance

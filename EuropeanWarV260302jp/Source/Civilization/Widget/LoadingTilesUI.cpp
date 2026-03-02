@@ -95,6 +95,7 @@ void ULoadingTilesUI::NativeConstruct()
 void ULoadingTilesUI::NativeTick(const FGeometry& MyGeometry, float DeltaTime)
 {
 	Super::NativeTick(MyGeometry, DeltaTime);
+	USuperGameInstance* GameInst = Cast<USuperGameInstance>(GetWorld()->GetGameInstance());
 	
 	// 실제 진행률에 따라 업데이트
 	if (curPercent < targetPercent)

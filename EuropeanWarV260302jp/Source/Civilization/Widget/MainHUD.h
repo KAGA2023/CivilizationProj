@@ -225,6 +225,13 @@ protected:
 	int32 CurrentDiplomacyTargetPlayer = -1;
 	bool bIsDiplomacyUIOpen = false;
 
+	// NativeConstruct 재실행 시 LogUI에 라운드 줄 중복 추가 방지 (턴 버튼 등으로 위젯 갱신 시 재구성될 수 있음)
+	bool bInitialRoundLineAppended = false;
+	// 로드 시: 복원 전에 NativeConstruct가 실행되어 Round:1이 찍히는 것 방지. 복원 완료 후 한 번만 현재 라운드 추가
+	bool bPendingInitialRoundLine = false;
+	// OnRoundChangedHandler에서 같은 라운드 중복 추가 방지 (Round:7 두 번 뜨는 현상 방지)
+	int32 LastAppendedRoundNumber = -1;
+
 	// 외교 UI 열기 함수
 	void OpenDiplomacyUI(int32 TargetPlayerIndex);
 

@@ -73,12 +73,32 @@ void UMainHUD::NativeConstruct()
 			{
 				if (UTurnComponent* TurnComponent = SuperGameMode->GetTurnComponent())
 				{
+					// NativeConstruct 재실행 시 중복 바인딩 방지
+					TurnComponent->OnTurnChanged.RemoveDynamic(this, &UMainHUD::OnTurnChanged);
+					TurnComponent->OnRoundChanged.RemoveDynamic(this, &UMainHUD::OnRoundChangedHandler);
 					TurnComponent->OnTurnChanged.AddDynamic(this, &UMainHUD::OnTurnChanged);
 					TurnComponent->OnRoundChanged.AddDynamic(this, &UMainHUD::OnRoundChangedHandler);
-					// LogTxt 초기값: 현재 라운드 줄
-					if (LogUIWidget)
+					// 로드 중이면 복원 후에 한 번만 현재 라운드 추가 (복원 전엔 TurnComponent가 아직 Round 1이라 잘못된 값 방지)
+					if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(GetWorld()->GetGameInstance()))
 					{
-						LogUIWidget->AppendRoundLine(TurnComponent->GetCurrentRoundNumber());
+						if (SuperGameInst->bIsLoadingFromMainMenu)
+						{
+							bPendingInitialRoundLine = true;
+						}
+						else if (LogUIWidget && !bInitialRoundLineAppended)
+						{
+							int32 RoundNum = TurnComponent->GetCurrentRoundNumber();
+							LogUIWidget->AppendRoundLine(RoundNum);
+							LastAppendedRoundNumber = RoundNum;
+							bInitialRoundLineAppended = true;
+						}
+					}
+					else if (LogUIWidget && !bInitialRoundLineAppended)
+					{
+						int32 RoundNum = TurnComponent->GetCurrentRoundNumber();
+						LogUIWidget->AppendRoundLine(RoundNum);
+						LastAppendedRoundNumber = RoundNum;
+						bInitialRoundLineAppended = true;
 					}
 				}
 			}
@@ -275,9 +295,24 @@ void UMainHUD::OnTurnChanged(FTurnStruct NewTurn)
 	CloseUnitInfoUI();
 
 	// OtherPlayerTurnUI: 플레이어 0 턴 = Hidden, AI(1~n) 턴 = Visible (다른 위젯 상호작용 차단)
+	// 이벤트가 중복/역순으로 오는 경우를 대비해 TurnComponent의 현재 턴을 기준으로 결정
+	int32 AuthoritativePlayerIndex = NewTurn.PlayerIndex;
+	if (GetWorld())
+	{
+		if (AGameModeBase* GameMode = GetWorld()->GetAuthGameMode())
+		{
+			if (ASuperGameModeBase* SuperGameMode = Cast<ASuperGameModeBase>(GameMode))
+			{
+				if (UTurnComponent* TurnComponent = SuperGameMode->GetTurnComponent())
+				{
+					AuthoritativePlayerIndex = TurnComponent->GetCurrentPlayerIndex();
+				}
+			}
+		}
+	}
 	if (OtherPlayerTurnUIWidget)
 	{
-		if (NewTurn.PlayerIndex == 0)
+		if (AuthoritativePlayerIndex == 0)
 		{
 			OtherPlayerTurnUIWidget->SetVisibility(ESlateVisibility::Hidden);
 		}
@@ -290,9 +325,11 @@ void UMainHUD::OnTurnChanged(FTurnStruct NewTurn)
 
 void UMainHUD::OnRoundChangedHandler(FTurnStruct NewTurn)
 {
-	if (LogUIWidget)
+	// 같은 라운드가 두 번 찍히는 것 방지 (델리게이트 중복 호출 또는 로드 직후 타이밍 이슈)
+	if (LogUIWidget && NewTurn.RoundNumber != LastAppendedRoundNumber)
 	{
 		LogUIWidget->AppendRoundLine(NewTurn.RoundNumber);
+		LastAppendedRoundNumber = NewTurn.RoundNumber;
 	}
 }
 
@@ -968,6 +1005,32 @@ void UMainHUD::NativeDestruct()
 void UMainHUD::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
+
+	// 로드 후 복원이 끝나면 한 번만 현재 라운드 줄 추가 (첫 로그가 Round:1이 아니라 저장된 라운드로 나오도록)
+	if (bPendingInitialRoundLine && GetWorld())
+	{
+		if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(GetWorld()->GetGameInstance()))
+		{
+			if (!SuperGameInst->bIsLoadingFromMainMenu)
+			{
+				if (AGameModeBase* GameMode = GetWorld()->GetAuthGameMode())
+				{
+					if (ASuperGameModeBase* SuperGameMode = Cast<ASuperGameModeBase>(GameMode))
+					{
+						UTurnComponent* TurnComponent = SuperGameMode->GetTurnComponent();
+						if (TurnComponent && LogUIWidget)
+						{
+							int32 CurrentRound = TurnComponent->GetCurrentRoundNumber();
+							LogUIWidget->AppendRoundLine(CurrentRound);
+							LastAppendedRoundNumber = CurrentRound;
+							bInitialRoundLineAppended = true;
+						}
+					}
+				}
+				bPendingInitialRoundLine = false;
+			}
+		}
+	}
 
 	// MouseUI가 설정되어 있으면 마우스 위치를 따라가도록 업데이트
 	if (MouseUIWidget)
