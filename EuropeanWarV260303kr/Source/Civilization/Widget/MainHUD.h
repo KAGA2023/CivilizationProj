@@ -1,0 +1,343 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Blueprint/UserWidget.h"
+#include "Animation/WidgetAnimation.h"
+#include "../World/WorldTileActor.h"
+#include "../Diplomacy/DiplomacyStruct.h"
+#include "MainHUD.generated.h"
+
+// 플레이어 0의 도시 타일 클릭 이벤트 델리게이트
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCityTileClicked);
+
+// FOnBuilderTileClicked는 WorldTileActor.h에서 이미 선언되어 있음
+
+UCLASS()
+class CIVILIZATION_API UMainHUD : public UUserWidget
+{
+	GENERATED_BODY()
+
+protected:
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+	class UTextBlock* GoldTxt = nullptr;
+
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+	class UTextBlock* PopulationTxt = nullptr;
+
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+	class UTextBlock* ScienceTxt = nullptr;
+
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+	class UTextBlock* RoundTxt = nullptr;
+
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+	class UButton* PauseBtn = nullptr;
+
+	/** W_MainHUD 애니메이션 창에 만든 "OpenResearchUI" 애니메이션과 자동 바인딩 */
+	UPROPERTY(Transient, meta = (BindWidgetAnim))
+	UWidgetAnimation* OpenResearchUI = nullptr;
+
+	/** W_MainHUD 애니메이션 창에 만든 "OpenAIPlayerLoseUI" 애니메이션과 자동 바인딩 (AI 패배 위젯 표시 시 재생) */
+	UPROPERTY(Transient, meta = (BindWidgetAnim))
+	UWidgetAnimation* OpenAIPlayerLoseUI = nullptr;
+
+	/** W_MainHUD 애니메이션 창에 만든 "OpenPlayerWinUI" 애니메이션과 자동 바인딩 (플레이어 승리 위젯 표시 시 재생) */
+	UPROPERTY(Transient, meta = (BindWidgetAnim))
+	UWidgetAnimation* OpenPlayerWinUI = nullptr;
+
+	/** W_MainHUD 애니메이션 창에 만든 "OpenPlayerLoseUI" 애니메이션과 자동 바인딩 (플레이어 패배 위젯 표시 시 재생) */
+	UPROPERTY(Transient, meta = (BindWidgetAnim))
+	UWidgetAnimation* OpenPlayerLoseUI = nullptr;
+
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+	class UHorizontalBox* StrategicResourceHB = nullptr;
+
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+	class UHorizontalBox* LuxuryResourceHB = nullptr;
+
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+	class UHorizontalBox* CountryHB = nullptr;
+
+	// 데이터 업데이트 함수
+	UFUNCTION(BlueprintCallable, Category = "HUD")
+	void UpdateHUDData();
+
+	// OnTurnChanged 델리게이트 콜백 함수
+	UFUNCTION()
+	void OnTurnChanged(FTurnStruct NewTurn);
+
+	// OnRoundChanged 델리게이트 콜백 함수 (라운드 줄 로그용)
+	UFUNCTION()
+	void OnRoundChangedHandler(FTurnStruct NewTurn);
+
+	// OnPlayerCityTileClicked 델리게이트 콜백 함수
+	UFUNCTION()
+	void OnPlayerCityTileClicked();
+
+	// OnBuilderTileClicked 델리게이트 콜백 함수
+	UFUNCTION()
+	void OnBuilderTileClickedHandler(class UWorldTile* Tile, FVector2D TileCoordinate);
+
+	// OnGoldChanged 델리게이트 콜백 함수
+	UFUNCTION()
+	void OnGoldChanged(int32 NewGold);
+
+	// OnPopulationChanged 델리게이트 콜백 함수
+	UFUNCTION()
+	void OnPopulationChanged(int32 NewPopulation);
+
+	// OnFacilityChanged 델리게이트 콜백 함수
+	UFUNCTION()
+	void OnFacilityChanged(FVector2D TileCoordinate);
+
+	// OnGeneralTileClicked 델리게이트 콜백 함수
+	UFUNCTION()
+	void OnGeneralTileClickedHandler(FVector2D TileCoordinate);
+
+	// OnStrategicResourceStockChanged 델리게이트 콜백 함수
+	UFUNCTION()
+	void OnStrategicResourceStockChanged(EStrategicResource Resource, int32 NewStock);
+
+	// OnLuxuryResourceChanged 델리게이트 콜백 함수
+	UFUNCTION()
+	void OnLuxuryResourceChanged(ELuxuryResource Resource, int32 NewAmount);
+
+	// ========== 승리/패배 시스템 델리게이트 핸들러 ==========
+	// 플레이어 승리 핸들러
+	UFUNCTION()
+	void OnPlayerVictory();
+
+	// 플레이어 패배 핸들러
+	UFUNCTION()
+	void OnPlayerDefeated();
+
+	// AI 플레이어 패배 핸들러
+	UFUNCTION()
+	void OnAIPlayerDefeated(int32 DefeatedPlayerIndex);
+
+	// 모든 WorldTileActor의 OnPlayerCityTileClicked 델리게이트 바인딩
+	UFUNCTION(BlueprintCallable, Category = "HUD")
+	void BindCityTileClickedDelegates();
+
+	// 모든 WorldTileActor의 OnBuilderTileClicked 델리게이트 바인딩
+	UFUNCTION(BlueprintCallable, Category = "HUD")
+	void BindBuilderTileClickedDelegates();
+
+	// 모든 WorldTileActor의 OnGeneralTileClicked 델리게이트 바인딩
+	UFUNCTION(BlueprintCallable, Category = "HUD")
+	void BindGeneralTileClickedDelegates();
+
+	// PlayerState의 델리게이트 바인딩
+	void BindPlayerStateDelegates();
+
+	// FacilityManager의 델리게이트 바인딩
+	void BindFacilityDelegates();
+	void UnbindFacilityDelegates();
+
+	// 전략 자원 슬롯 관리
+	void UpdateStrategicResourceSlots();
+	void ClearStrategicResourceSlots();
+
+	// 사치 자원 슬롯 관리
+	void UpdateLuxuryResourceSlots();
+	void ClearLuxuryResourceSlots();
+
+	// 국가 슬롯 관리
+	void UpdateCountrySlots();
+	void ClearCountrySlots();
+
+	// 국가 슬롯 클릭 콜백
+	UFUNCTION()
+	void OnCountrySlotClicked(int32 TargetPlayerIndex);
+
+	// 플레이어 0의 도시 타일 클릭 이벤트
+	UPROPERTY(BlueprintAssignable, Category = "City Events")
+	FOnCityTileClicked OnCityTileClicked;
+
+	// 건설자 클릭 이벤트
+	UPROPERTY(BlueprintAssignable, Category = "Builder Events")
+	FOnBuilderTileClicked OnBuilderTileClicked;
+
+	// BuildFacilityUI (W_MainHUD 자식 이름 "BuildFacilityPanel"로 추가 시 자동 바인딩)
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+	class UBuildFacilityUI* BuildFacilityPanel = nullptr;
+
+	// 현재 열린 타일 좌표 추적
+	FVector2D CurrentOpenFacilityTile = FVector2D::ZeroVector;
+	bool bIsFacilityUIOpen = false;
+
+	// UI 닫기 함수
+	UFUNCTION()
+	void CloseFacilityUI();
+
+	// UnitCombatUI (W_MainHUD 자식 이름 "UnitCombatPanel"로 추가 시 자동 바인딩)
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+	class UUnitCombatUI* UnitCombatPanel = nullptr;
+
+	// 현재 열린 전투 타일 좌표 추적
+	FVector2D CurrentCombatHoverTile = FVector2D::ZeroVector;
+	bool bIsCombatUIOpen = false;
+
+	// DiplomacyUI (W_MainHUD 자식 이름 "DiplomacyPanel"로 추가 시 자동 바인딩)
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+	class UDiplomacyUI* DiplomacyPanel = nullptr;
+
+	// PauseMenuUI (W_MainHUD 자식 이름 "PauseMenuPanel"로 추가 시 자동 바인딩)
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+	class UPauseMenuUI* PauseMenuPanel = nullptr;
+
+	// MouseUI (W_MainHUD 자식 이름 "MousePanel"로 추가 시 자동 바인딩)
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+	class UMouseUI* MousePanel = nullptr;
+
+	// OtherPlayerTurnUI 위젯 (W_MainHUD에서 이름 "OtherPlayerTurnPanel"인 자식으로 W_OtherPlayerTurn 추가 시 자동 바인딩)
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+	class UOtherPlayerTurnUI* OtherPlayerTurnPanel = nullptr;
+
+	// ========== 승리/패배 시스템 위젯 ==========
+	// PlayerWinUI (W_MainHUD 자식 이름 "PlayerWinPanel"로 추가 시 자동 바인딩)
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+	class UPlayerWinUI* PlayerWinPanel = nullptr;
+
+	// PlayerLoseUI (W_MainHUD 자식 이름 "PlayerLosePanel"로 추가 시 자동 바인딩)
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+	class UPlayerLoseUI* PlayerLosePanel = nullptr;
+
+	// AIPlayerLoseUI (W_MainHUD 자식 이름 "AIPlayerLosePanel"로 추가 시 자동 바인딩)
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+	class UAIPlayerLoseUI* AIPlayerLosePanel = nullptr;
+
+	// UnitInfoUI (W_MainHUD 자식 이름 "UnitInfoPanel"로 추가 시 자동 바인딩. Optional로 해서 기존 "UnitInfoUIWidget" 블루프린트와 호환)
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidgetOptional))
+	class UUnitInfoUI* UnitInfoPanel = nullptr;
+
+	// OpenResearchUI 위젯 참조 (블루프린트에서 이름 일치 시 자동 바인딩)
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+	class UOpenResearchUI* OpenResearchUIWidget = nullptr;
+
+	// LogUI 위젯 참조 (블루프린트에서 이름 일치 시 자동 바인딩)
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+	class ULogUI* LogUIWidget = nullptr;
+
+	// 현재 외교 대상 플레이어 인덱스
+	int32 CurrentDiplomacyTargetPlayer = -1;
+	bool bIsDiplomacyUIOpen = false;
+
+	// NativeConstruct 재실행 시 LogUI에 라운드 줄 중복 추가 방지
+	bool bInitialRoundLineAppended = false;
+	// OnRoundChangedHandler에서 같은 라운드 중복 추가 방지
+	int32 LastAppendedRoundNumber = -1;
+
+	// 외교 UI 열기 함수
+	void OpenDiplomacyUI(int32 TargetPlayerIndex);
+
+	// 외교 UI 닫기 함수
+	UFUNCTION()
+	void CloseDiplomacyUI();
+
+	// 전투 타일 호버 델리게이트 바인딩 함수
+	UFUNCTION(BlueprintCallable, Category = "HUD")
+	void BindCombatTileHoverDelegates();
+
+	// 타일 호버 델리게이트 바인딩 함수
+	UFUNCTION(BlueprintCallable, Category = "HUD")
+	void BindTileHoverDelegates();
+
+	// UnitManager의 전투 실행 완료 델리게이트 바인딩
+	void BindCombatExecutedDelegate();
+
+	// UnitManager의 선택 유닛 변경 델리게이트 바인딩
+	void BindSelectedUnitDelegate();
+
+	// 선택 유닛 변경 핸들러 (UnitInfoUI 표시/숨김)
+	UFUNCTION()
+	void OnSelectedUnitChangedHandler(class AUnitCharacterBase* NewSelectedUnit);
+
+	// UnitInfoUI 숨김 (Visibility: Hidden)
+	void CloseUnitInfoUI();
+
+	// 전투 타일 호버 핸들러 함수들
+	UFUNCTION()
+	void OnCombatTileHoverBeginHandler(class UWorldTile* Tile);
+
+	UFUNCTION()
+	void OnCombatTileHoverEndHandler(class UWorldTile* Tile);
+
+	// 타일 호버 핸들러 함수들
+	UFUNCTION()
+	void OnTileHoverBeginHandler(class UWorldTile* Tile);
+
+	UFUNCTION()
+	void OnTileHoverEndHandler(class UWorldTile* Tile);
+
+	// 전투 실행 완료 핸들러
+	UFUNCTION()
+	void OnCombatExecutedHandler();
+
+	// 전투 UI 닫기 함수
+	void CloseCombatUI();
+
+	// DiplomacyManager 델리게이트 바인딩 함수
+	void BindDiplomacyDelegates();
+
+	// DiplomacyManager 델리게이트 언바인딩 함수
+	void UnbindDiplomacyDelegates();
+
+	// ========== 승리/패배 위젯 표시 함수 ==========
+	// 플레이어 승리 위젯 표시
+	UFUNCTION(BlueprintCallable, Category = "Victory")
+	void ShowVictoryWidget();
+
+	// 플레이어 패배 위젯 표시
+	UFUNCTION(BlueprintCallable, Category = "Victory")
+	void ShowDefeatWidget();
+
+	// AI 플레이어 패배 위젯 표시
+	UFUNCTION(BlueprintCallable, Category = "Victory")
+	void ShowAIDefeatWidget(int32 DefeatedPlayerIndex);
+
+	// PauseBtn 클릭 핸들러
+	UFUNCTION()
+	void OnPauseButtonClicked();
+
+	// OpenResearchUI 위젯의 OpenResearchBtn 클릭 시 호출 (OpenResearchUI 애니메이션 재생)
+	UFUNCTION()
+	void OnResearchButtonClicked();
+
+	// PauseMenuUI 델리게이트 바인딩 함수
+	void BindPauseMenuUIDelegate();
+
+	// PauseMenuUI 숨기기 함수
+	UFUNCTION()
+	void HidePauseMenu();
+
+	// AIPlayerLoseUI 델리게이트 바인딩 함수
+	void BindAIPlayerLoseUIDelegate();
+
+	// AIPlayerLoseUI 숨기기 함수
+	UFUNCTION()
+	void HideAIPlayerLoseUI();
+
+	// 외교 액션 발행 핸들러
+	UFUNCTION()
+	void OnDiplomacyActionIssuedHandler(const struct FDiplomacyAction& Action);
+
+	// 외교 액션 처리 핸들러
+	UFUNCTION()
+	void OnDiplomacyActionResolvedHandler(const struct FDiplomacyAction& Action, bool bAccepted);
+
+	// 외교 상태 변경 핸들러
+	UFUNCTION()
+	void OnDiplomacyStatusChangedHandler(int32 PlayerA, int32 PlayerB, EDiplomacyStatusType NewStatus);
+
+	// OpenResearchUI 개발 중 기술 표시 갱신 (NativeConstruct에서 한 번 호출)
+	UFUNCTION()
+	void RefreshOpenResearchUI();
+
+	virtual void NativeConstruct() override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+	virtual void NativeDestruct() override;
+};
+
