@@ -167,15 +167,14 @@ AUnitCharacterBase* UUnitManager::SpawnUnitAtHex(FVector2D HexPosition, const FN
         }
     }
 
-    // 유닛 소환 타일 중점에 나이아가라 이펙트 1회 스폰
-    static TObjectPtr<UNiagaraSystem> UnitSpawnNiagaraTemplate;
-    if (!UnitSpawnNiagaraTemplate)
+    // 유닛 소환 타일 중점에 나이아가라 이펙트 1회 스폰 (에셋·월드 유효할 때만, 패키징 빌드에서 깨진 참조 시 크래시 방지)
+    if (IsValid(World))
     {
-        UnitSpawnNiagaraTemplate = LoadObject<UNiagaraSystem>(nullptr, TEXT("/Game/Civilization/Particle/NS_BuffCiv.NS_BuffCiv"));
-    }
-    if (UnitSpawnNiagaraTemplate)
-    {
-        UNiagaraFunctionLibrary::SpawnSystemAtLocation(World, UnitSpawnNiagaraTemplate, WorldPosition, FRotator::ZeroRotator, FVector::OneVector, true, true);
+        UNiagaraSystem* NiagaraTemplate = LoadObject<UNiagaraSystem>(nullptr, TEXT("/Game/Civilization/Particle/NS_BuffCiv.NS_BuffCiv"));
+        if (NiagaraTemplate && IsValid(NiagaraTemplate))
+        {
+            UNiagaraFunctionLibrary::SpawnSystemAtLocation(World, NiagaraTemplate, WorldPosition, FRotator::ZeroRotator, FVector::OneVector, true, true);
+        }
     }
 
     return NewUnit;

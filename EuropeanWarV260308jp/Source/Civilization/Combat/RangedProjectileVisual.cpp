@@ -15,11 +15,14 @@ ARangedProjectileVisual::ARangedProjectileVisual()
 	ProjectileEffect = CreateDefaultSubobject<UNiagaraComponent>(TEXT("ProjectileEffect"));
 	ProjectileEffect->SetupAttachment(RootSceneComponent);
 
-	// 나이아가라 에셋 경로 (에디터에서 덮어쓸 수 있음)
+	// 나이아가라 에셋 경로 (에디터에서 덮어쓸 수 있음). 패키징 빌드에서 깨진 참조 시 크래시 방지.
 	static const TCHAR* NiagaraPath = TEXT("/Game/Civilization/Particle/NS_HolyArrow.NS_HolyArrow");
 	if (UNiagaraSystem* System = LoadObject<UNiagaraSystem>(nullptr, NiagaraPath))
 	{
-		ProjectileEffect->SetAsset(System);
+		if (IsValid(System))
+		{
+			ProjectileEffect->SetAsset(System);
+		}
 	}
 }
 
