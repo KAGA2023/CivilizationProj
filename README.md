@@ -1,4 +1,5 @@
 ----------한국어 버전----------
+
 [게임영상 유튜브 링크]
 https://youtu.be/heUBhchGrvQ
 
@@ -6,6 +7,7 @@ https://youtu.be/heUBhchGrvQ
 https://drive.google.com/drive/folders/1nOl1hayjAMK4qn6861FaHvKIqdDWazgJ?usp=drive_link
 
 ----------日本語版----------
+
 【ゲーム映像 YouTubeリンク】
 https://youtu.be/IcNP79WpxQQ
 
