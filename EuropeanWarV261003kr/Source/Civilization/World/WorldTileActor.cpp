@@ -9,6 +9,7 @@
 #include "WorldComponent.h"
 #include "../SuperGameInstance.h"
 #include "../SuperGameModeBase.h"
+#include "../SuperGameController.h"
 #include "../Unit/UnitManager.h"
 #include "../Unit/UnitCharacterBase.h"
 #include "../SuperPlayerState.h"
@@ -744,8 +745,15 @@ void AWorldTileActor::OnTileClicked(UPrimitiveComponent* TouchedComponent, FKey 
 						}
 						else
 						{
-							// 빈 타일이나 적 유닛을 클릭했으면 두 번째 선택으로 처리
-							UnitManager->HandleMoveSelection(TileData);
+							FVector2D FromHex = FVector2D::ZeroVector;
+							FVector2D ToHex = FVector2D::ZeroVector;
+							if (UnitManager->ConfirmMoveSelection(TileData, FromHex, ToHex))
+							{
+								if (ASuperGameController* GameController = Cast<ASuperGameController>(GetWorld()->GetFirstPlayerController()))
+								{
+									GameController->ServerRequestMoveUnit(FromHex, ToHex);
+								}
+							}
 						}
 					}
 				}
@@ -805,8 +813,15 @@ void AWorldTileActor::OnTileClicked(UPrimitiveComponent* TouchedComponent, FKey 
 						}
 						else
 						{
-							// 적 유닛이나 도시를 클릭했으면 두 번째 선택으로 처리 (전투 실행)
-							UnitManager->HandleCombatSelection(TileData);
+							FVector2D AttackerHex = FVector2D::ZeroVector;
+							FVector2D TargetHex = FVector2D::ZeroVector;
+							if (UnitManager->ConfirmCombatSelection(TileData, AttackerHex, TargetHex))
+							{
+								if (ASuperGameController* GameController = Cast<ASuperGameController>(GetWorld()->GetFirstPlayerController()))
+								{
+									GameController->ServerRequestCombat(AttackerHex, TargetHex);
+								}
+							}
 						}
 					}
 				}

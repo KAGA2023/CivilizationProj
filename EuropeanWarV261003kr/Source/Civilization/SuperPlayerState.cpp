@@ -87,6 +87,25 @@ bool ASuperPlayerState::IsLocalPlayer() const
     return PlayerIndex == 0;
 }
 
+void ASuperPlayerState::AddSpawnedUnitPopulation()
+{
+    Population++;
+    OnPopulationChanged.Broadcast(Population);
+}
+
+void ASuperPlayerState::OnUnitSpawnedLocally(FName UnitName, FVector2D SpawnHex)
+{
+    AddSpawnedUnitPopulation();
+
+    if (UWorld* World = GetWorld())
+    {
+        if (ASuperGameModeBase* GameMode = Cast<ASuperGameModeBase>(World->GetAuthGameMode()))
+        {
+            GameMode->NotifyRemoteUnitSpawned(PlayerIndex, UnitName, SpawnHex);
+        }
+    }
+}
+
 // ========== 자원 관리 함수들 ==========
 void ASuperPlayerState::AddFood(int32 Amount)
 {
@@ -508,7 +527,8 @@ void ASuperPlayerState::ProcessTurnResources()
         }
         
         // 유닛 생산 완료 확인 및 유닛 소환
-        if (CompletedUnitName != NAME_None)
+        // 참가자는 빈 칸을 다시 고르지 않습니다. 호스트가 정한 칸은 ClientApplySpawnedUnit으로 옵니다.
+        if (CompletedUnitName != NAME_None && (!GetWorld() || GetWorld()->GetNetMode() != NM_Client))
         {
             // 유닛 생산 완료 - 도시 좌표에 직접 소환
             if (UWorld* World = GetWorld())
@@ -525,9 +545,7 @@ void ASuperPlayerState::ProcessTurnResources()
                             AUnitCharacterBase* SpawnedUnit = UnitManager->SpawnUnitAtHex(SpawnHex, CompletedUnitName, PlayerIndex);
                             if (SpawnedUnit)
                             {
-                                // 유닛 소환 성공 - Population 증가
-                                Population++;
-                                OnPopulationChanged.Broadcast(Population);
+                                OnUnitSpawnedLocally(CompletedUnitName, SpawnHex);
                             }
                         }
                         // SpawnHex가 -1이어도 특별한 처리 없음 (다음 턴에 다시 시도 가능)
@@ -1039,7 +1057,8 @@ bool ASuperPlayerState::PurchaseUnitWithGold(FName UnitName)
     }
     
     // 인구 제한 체크: Population이 LimitPopulation 이상이면 유닛 구매 불가
-    if (Population >= LimitPopulation)
+    // 참가자는 호스트가 이미 승인한 구매입니다. 소환 알림이 인구를 먼저 올릴 수 있어 여기서 다시 막지 않습니다.
+    if ((!GetWorld() || GetWorld()->GetNetMode() != NM_Client) && Population >= LimitPopulation)
     {
         return false;
     }
@@ -1084,6 +1103,19 @@ bool ASuperPlayerState::PurchaseUnitWithGold(FName UnitName)
         int32 RequiredAmount = UnitStat.RequiredResourceAmounts[i];
         SpendStrategicResource(Resource, RequiredAmount);
     }
+
+    // 참가자는 비용을 맞추기만 합니다. 칸은 호스트 소환 알림을 따릅니다.
+    if (GetWorld() && GetWorld()->GetNetMode() == NM_Client)
+    {
+        if (IsLocalPlayer())
+        {
+            if (USoundBase* BuildSound = LoadObject<USoundBase>(nullptr, TEXT("/Game/Civilization/Sound/Build.Build")))
+            {
+                UGameplayStatics::PlaySound2D(this, BuildSound);
+            }
+        }
+        return true;
+    }
     
     // 유닛 소환 (도시 좌표에 소환, PlayerIndex 전달)
     if (UWorld* World = GetWorld())
@@ -1100,9 +1132,7 @@ bool ASuperPlayerState::PurchaseUnitWithGold(FName UnitName)
                     AUnitCharacterBase* SpawnedUnit = UnitManager->SpawnUnitAtHex(SpawnHex, UnitName, PlayerIndex);
                     if (SpawnedUnit)
                     {
-                        // 유닛 소환 성공 - Population 증가
-                        Population++;
-                        OnPopulationChanged.Broadcast(Population);
+                        OnUnitSpawnedLocally(UnitName, SpawnHex);
                         // 내 도시 유닛 구매 성공 시 Build 사운드 재생
                         if (IsLocalPlayer())
                         {

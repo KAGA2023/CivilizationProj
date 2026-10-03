@@ -630,45 +630,41 @@ void UUnitManager::HandleMoveSelection(UWorldTile* ClickedTile)
         MoveFirstSelectedTile = ClickedTile;
         MoveFirstSelectedTile->SetSelected(true);
     }
-    // 첫 번째 선택이 있고 두 번째 선택이 없으면 두 번째로 설정
-    else if (!HasMoveSecondSelection())
+}
+
+bool UUnitManager::ConfirmMoveSelection(UWorldTile* ClickedTile, FVector2D& OutFromHex, FVector2D& OutToHex)
+{
+    if (!ClickedTile || !WorldComponent || !MoveFirstSelectedTile)
     {
-        // 같은 타일을 선택한 경우 즉시 선택 초기화
-        if (MoveFirstSelectedTile && MoveFirstSelectedTile->GetGridPosition() == HexPos)
-        {
-            ClearMoveSelection(); // 첫 번째 선택까지 모두 초기화
-            return;
-        }
-        
-        // 내 유닛인 경우에만 이동 가능 타일 검증
-        AUnitCharacterBase* FirstUnit = GetUnitAtHex(MoveFirstSelectedTile->GetGridPosition());
-        int32 LocalPlayerIndex = 0;
-        if (UWorld* World = GetWorld())
-        {
-            if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
-            {
-                LocalPlayerIndex = SuperGameInst->GetLocalPlayerIndex();
-            }
-        }
-        if (FirstUnit && FirstUnit->GetPlayerIndex() == LocalPlayerIndex)
-        {
-            // 1턴 내 도달 불가능한 타일을 클릭한 경우
-            if (!IsReachableTile(HexPos))
-            {
-                // 선택 취소 (밝기 초기화 및 이동 가능 타일 목록 초기화 포함)
-                ClearMoveSelection();
-                return;
-            }
-        }
-        
-        MoveSecondSelectedTile = ClickedTile;
-        MoveSecondSelectedTile->SetSelected(true);
-        
-        // 유닛 이동 실행
-        MoveUnitFromFirstToSecondSelection();
-        
-        // 선택 초기화는 이동 완료 후 CompleteMovement()에서 처리
+        return false;
     }
+
+    FVector2D HexPos = ClickedTile->GetGridPosition();
+    if (MoveFirstSelectedTile->GetGridPosition() == HexPos)
+    {
+        ClearMoveSelection();
+        return false;
+    }
+
+    AUnitCharacterBase* FirstUnit = GetUnitAtHex(MoveFirstSelectedTile->GetGridPosition());
+    int32 LocalPlayerIndex = 0;
+    if (UWorld* World = GetWorld())
+    {
+        if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
+        {
+            LocalPlayerIndex = SuperGameInst->GetLocalPlayerIndex();
+        }
+    }
+    if (FirstUnit && FirstUnit->GetPlayerIndex() == LocalPlayerIndex && !IsReachableTile(HexPos))
+    {
+        ClearMoveSelection();
+        return false;
+    }
+
+    OutFromHex = MoveFirstSelectedTile->GetGridPosition();
+    OutToHex = HexPos;
+    ClearMoveSelection();
+    return true;
 }
 
 void UUnitManager::ClearMoveSelection()
@@ -694,23 +690,19 @@ void UUnitManager::ClearMoveSelection()
     }
 }
 
-void UUnitManager::MoveUnitFromFirstToSecondSelection()
+bool UUnitManager::MoveUnitFromHexToHex(FVector2D FirstHexPos, FVector2D SecondHexPos)
 {
-    if (!MoveFirstSelectedTile || !MoveSecondSelectedTile || !WorldComponent)
+    if (!WorldComponent)
     {
-        ClearMoveSelection(); // 선택 초기화
-        return;
+        return false;
     }
-    
-    FVector2D FirstHexPos = MoveFirstSelectedTile->GetGridPosition();
-    FVector2D SecondHexPos = MoveSecondSelectedTile->GetGridPosition();
-    
+
     // 첫 번째 타일의 유닛 가져오기
     AUnitCharacterBase* UnitToMove = GetUnitAtHex(FirstHexPos);
     if (!UnitToMove)
     {
-        ClearMoveSelection(); // 선택 초기화
-        return;
+        ClearMoveSelection();
+        return false;
     }
     
     // 유닛이 이동 가능한 상태인지 확인 (이미 공격했거나 이동력이 없는 경우)
@@ -718,16 +710,16 @@ void UUnitManager::MoveUnitFromFirstToSecondSelection()
     {
         if (!StatusComp->CanMove())
         {
-            ClearMoveSelection(); // 선택 초기화
-            return; // 이동할 수 없는 상태
+            ClearMoveSelection();
+            return false;
         }
     }
     
     // 두 번째 타일이 이동 가능한지 확인 (국경선 포함)
     if (!CanPlaceUnitAtHex(SecondHexPos, UnitToMove))
     {
-        ClearMoveSelection(); // 선택 초기화
-        return;
+        ClearMoveSelection();
+        return false;
     }
     
     int32 MoverPlayerIndex = UnitToMove->GetPlayerIndex();
@@ -737,8 +729,8 @@ void UUnitManager::MoveUnitFromFirstToSecondSelection()
     // 경로가 없거나 유효하지 않으면 이동하지 않음
     if (Path.Num() <= 1)
     {
-        ClearMoveSelection(); // 선택 초기화
-        return;
+        ClearMoveSelection();
+        return false;
     }
     
     // 유닛의 남은 이동력 확인 (유닛별 이동력 사용)
@@ -750,15 +742,15 @@ void UUnitManager::MoveUnitFromFirstToSecondSelection()
     // 제한된 경로가 없으면 이동하지 않음
     if (LimitedPath.Num() <= 1)
     {
-        ClearMoveSelection(); // 선택 초기화
-        return;
+        ClearMoveSelection();
+        return false;
     }
     
     // 이동 시작 시 즉시 선택 해제·이동 선택 정리 (전사 외곽선/이동가능 타일 제거, MoveFirst/Second 타일 해제)
     ClearMoveSelection();
     
     // 경로를 따라 유닛 이동 (시각적 애니메이션)
-    StartVisualMovement(UnitToMove, LimitedPath);
+    return StartVisualMovement(UnitToMove, LimitedPath);
 }
 
 // 경로 찾기 및 이동 시스템 구현
@@ -1288,11 +1280,11 @@ void UUnitManager::RequestBuilderDestroyFacility(FVector2D Hex)
 }
 
 // 시각적 이동 애니메이션 함수들 구현
-void UUnitManager::StartVisualMovement(AUnitCharacterBase* Unit, const TArray<FVector2D>& Path)
+bool UUnitManager::StartVisualMovement(AUnitCharacterBase* Unit, const TArray<FVector2D>& Path)
 {
     if (!Unit || Path.Num() <= 1)
     {
-        return;
+        return false;
     }
     
     FVector2D DestinationHex = Path[Path.Num() - 1];
@@ -1301,7 +1293,7 @@ void UUnitManager::StartVisualMovement(AUnitCharacterBase* Unit, const TArray<FV
     if (!CanPlaceUnitAtHex(DestinationHex, Unit))
     {
         // 목적지가 더 이상 사용 불가능하면 이동 취소
-        return;
+        return false;
     }
     
     // 전체 경로의 이동 비용 계산 및 소비
@@ -1346,6 +1338,8 @@ void UUnitManager::StartVisualMovement(AUnitCharacterBase* Unit, const TArray<FV
         // 경로를 따라 이동 시작
         VisComponent->StartMovementAlongPath(Path);
     }
+
+    return true;
 }
 
 void UUnitManager::StartMovementImmediate(AUnitCharacterBase* Unit, const TArray<FVector2D>& Path)
@@ -1520,15 +1514,21 @@ void UUnitManager::HandleCombatSelection(UWorldTile* ClickedTile)
         CombatFirstSelectedTile = ClickedTile;
         CombatFirstSelectedTile->SetSelected(true);
     }
-    // 첫 번째 선택이 있고 두 번째 선택이 없으면 두 번째로 설정
-    else if (!HasCombatSecondSelection())
+}
+
+bool UUnitManager::ConfirmCombatSelection(UWorldTile* ClickedTile, FVector2D& OutAttackerHex, FVector2D& OutTargetHex)
+{
+    if (!ClickedTile || !WorldComponent || !CombatFirstSelectedTile)
     {
-        // 같은 타일을 선택한 경우 즉시 선택 초기화
-        if (CombatFirstSelectedTile && CombatFirstSelectedTile->GetGridPosition() == HexPos)
-        {
-            ClearCombatSelection(); // 첫 번째 선택까지 모두 초기화
-            return;
-        }
+        return false;
+    }
+
+    FVector2D HexPos = ClickedTile->GetGridPosition();
+    if (CombatFirstSelectedTile->GetGridPosition() == HexPos)
+    {
+        ClearCombatSelection();
+        return false;
+    }
         
         // 해당 타일에 유닛이 있는지 확인
         AUnitCharacterBase* UnitAtTile = GetUnitAtHex(HexPos);
@@ -1538,7 +1538,7 @@ void UUnitManager::HandleCombatSelection(UWorldTile* ClickedTile)
         // 유닛도 없고 도시도 아니면 선택하지 않음
         if (!UnitAtTile && !bIsCityTile)
         {
-            return;
+            return false;
         }
         
         // 사거리 검증
@@ -1564,8 +1564,8 @@ void UUnitManager::HandleCombatSelection(UWorldTile* ClickedTile)
             // 사거리 밖이면 선택 초기화
             if (HexDistance > AttackRange)
             {
-                ClearCombatSelection(); // 첫 번째 선택도 초기화
-                return;
+                ClearCombatSelection();
+                return false;
             }
             
             // Range == 1인 근접 공격일 때만 층수 차이 체크
@@ -1584,72 +1584,23 @@ void UUnitManager::HandleCombatSelection(UWorldTile* ClickedTile)
                     // 층수 차이가 2 이상이면 선택 초기화
                     if (FloorDifference >= 2)
                     {
-                        ClearCombatSelection(); // 첫 번째 선택도 초기화
-                        return;
+                        ClearCombatSelection();
+                        return false;
                     }
                 }
             }
         }
         
-        // 대상(유닛/도시) 소유 플레이어와 플레이어 0이 전쟁 중인지 확인 — 전쟁 중이 아니면 무시
-        int32 TargetPlayerId = -1;
-        if (UnitAtTile)
+        AUnitCharacterBase* AttackerForWar = GetUnitAtHex(CombatFirstSelectedTile->GetGridPosition());
+        if (!AttackerForWar || !IsHostileCombatTarget(AttackerForWar, HexPos))
         {
-            TargetPlayerId = UnitAtTile->GetPlayerIndex();
+            return false;
         }
-        else if (bIsCityTile)
-        {
-            if (UWorld* World = GetWorld())
-            {
-                if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
-                {
-                    int32 TotalPlayerCount = SuperGameInst->GetPlayerStateCount();
-                    for (int32 i = 0; i < TotalPlayerCount; ++i)
-                    {
-                        if (ASuperPlayerState* PlayerState = SuperGameInst->GetPlayerState(i))
-                        {
-                            if (PlayerState->HasCity() && PlayerState->GetCityCoordinate() == HexPos)
-                            {
-                                TargetPlayerId = i;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        // 자기 유닛/도시(플레이어 0)를 대상으로 한 공격은 무시
-        if (TargetPlayerId == 0)
-        {
-            return;
-        }
-        // 적(플레이어 0이 아님)인 경우, 플레이어 0과 전쟁 중일 때만 전투 허용
-        if (TargetPlayerId > 0)
-        {
-            UDiplomacyManager* Diplomacy = nullptr;
-            if (UWorld* World = GetWorld())
-            {
-                if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
-                {
-                    Diplomacy = SuperGameInst->GetDiplomacyManager();
-                }
-            }
-            if (!Diplomacy || !Diplomacy->IsAtWar(0, TargetPlayerId))
-            {
-                return; // 전쟁 중이 아니면 아무 일도 하지 않고 무시
-            }
-        }
-        
-        CombatSecondSelectedTile = ClickedTile;
-        CombatSecondSelectedTile->SetSelected(true);
-        
-        // 전투 실행
-        ExecuteCombatBetweenSelectedUnits();
-        
-        // 선택 초기화
+
+        OutAttackerHex = CombatFirstSelectedTile->GetGridPosition();
+        OutTargetHex = HexPos;
         ClearCombatSelection();
-    }
+        return true;
 }
 
 // 전투 선택 초기화
@@ -1671,22 +1622,102 @@ void UUnitManager::ClearCombatSelection()
     }
 }
 
+bool UUnitManager::IsHostileCombatTarget(AUnitCharacterBase* Attacker, FVector2D TargetHex) const
+{
+    if (!Attacker || !WorldComponent)
+    {
+        return false;
+    }
+
+    int32 TargetPlayerId = -1;
+    if (AUnitCharacterBase* UnitAtTile = GetUnitAtHex(TargetHex))
+    {
+        TargetPlayerId = UnitAtTile->GetPlayerIndex();
+    }
+    else if (WorldComponent->IsCityAtHex(TargetHex))
+    {
+        if (UWorld* World = GetWorld())
+        {
+            if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
+            {
+                int32 TotalPlayerCount = SuperGameInst->GetPlayerStateCount();
+                for (int32 i = 0; i < TotalPlayerCount; ++i)
+                {
+                    if (ASuperPlayerState* PlayerState = SuperGameInst->GetPlayerState(i))
+                    {
+                        if (PlayerState->HasCity() && PlayerState->GetCityCoordinate() == TargetHex)
+                        {
+                            TargetPlayerId = i;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (TargetPlayerId < 0 || TargetPlayerId == Attacker->GetPlayerIndex())
+    {
+        return false;
+    }
+
+    UDiplomacyManager* Diplomacy = nullptr;
+    if (UWorld* World = GetWorld())
+    {
+        if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
+        {
+            Diplomacy = SuperGameInst->GetDiplomacyManager();
+        }
+    }
+    return Diplomacy && Diplomacy->IsAtWar(Attacker->GetPlayerIndex(), TargetPlayerId);
+}
+
+void UUnitManager::ResetPlayerUnitTurn(int32 PlayerIndex)
+{
+    for (AUnitCharacterBase* Unit : GetAllUnits())
+    {
+        if (!Unit || Unit->GetPlayerIndex() != PlayerIndex)
+        {
+            continue;
+        }
+        if (UUnitStatusComponent* StatusComp = Unit->GetUnitStatusComponent())
+        {
+            StatusComp->ResetTurn();
+        }
+    }
+}
+
 // 전투 실행 함수
 void UUnitManager::ExecuteCombatBetweenSelectedUnits()
 {
-    if (!CombatFirstSelectedTile || !CombatSecondSelectedTile || !WorldComponent)
+    if (!CombatFirstSelectedTile || !CombatSecondSelectedTile)
     {
         return;
     }
-    
-    FVector2D FirstHexPos = CombatFirstSelectedTile->GetGridPosition();
-    FVector2D SecondHexPos = CombatSecondSelectedTile->GetGridPosition();
-    
+
+    CombatFromHexToHex(
+        CombatFirstSelectedTile->GetGridPosition(),
+        CombatSecondSelectedTile->GetGridPosition(),
+        true);
+}
+
+bool UUnitManager::CombatFromHexToHex(FVector2D FirstHexPos, FVector2D SecondHexPos, bool bCheckDiplomacy)
+{
+    if (!WorldComponent)
+    {
+        return false;
+    }
+
     // 첫 번째 타일의 유닛 가져오기 (공격자)
     AUnitCharacterBase* Attacker = GetUnitAtHex(FirstHexPos);
     if (!Attacker)
     {
-        return;
+        return false;
+    }
+
+    if (bCheckDiplomacy && !IsHostileCombatTarget(Attacker, SecondHexPos))
+    {
+        return false;
     }
     
     // 전투 시작 전에 타일 밝기 초기화
@@ -1722,14 +1753,14 @@ void UUnitManager::ExecuteCombatBetweenSelectedUnits()
         
         if (!CityComponent)
         {
-            return;
+            return false;
         }
         
         // 전투 컴포넌트 가져오기 (공격자의 컴포넌트 사용)
         UUnitCombatComponent* CombatComp = Attacker->GetUnitCombatComponent();
         if (!CombatComp)
         {
-            return;
+            return false;
         }
         
         // 거리 계산
@@ -1738,7 +1769,7 @@ void UUnitManager::ExecuteCombatBetweenSelectedUnits()
         // 도시 공격 가능 여부 확인
         if (!CombatComp->CanExecuteCombatAgainstCity(Attacker, CityComponent, FirstHexPos, SecondHexPos))
         {
-            return;
+            return false;
         }
         
         // 도시 공격 계산 즉시 실행 (데미지 적용 포함)
@@ -1776,14 +1807,14 @@ void UUnitManager::ExecuteCombatBetweenSelectedUnits()
         AUnitCharacterBase* Defender = GetUnitAtHex(SecondHexPos);
         if (!Defender)
         {
-            return;
+            return false;
         }
         
         // 전투 컴포넌트 가져오기 (공격자의 컴포넌트 사용)
         UUnitCombatComponent* CombatComp = Attacker->GetUnitCombatComponent();
         if (!CombatComp)
         {
-            return;
+            return false;
         }
         
         // 거리 계산
@@ -1792,7 +1823,7 @@ void UUnitManager::ExecuteCombatBetweenSelectedUnits()
         // 전투 가능 여부 확인 (Hex 좌표 포함하여 사거리/층수 검증)
         if (!CombatComp->CanExecuteCombat(Attacker, Defender, FirstHexPos, SecondHexPos))
         {
-            return;
+            return false;
         }
         
         // 전투 계산 즉시 실행 (데미지 적용 포함)
@@ -1823,6 +1854,8 @@ void UUnitManager::ExecuteCombatBetweenSelectedUnits()
             OnCombatVisualizationComplete(Attacker, Defender, CombatResult, FirstHexPos, SecondHexPos);
         }
     }
+
+    return true;
 }
 
 // 전투 시각화 완료 콜백

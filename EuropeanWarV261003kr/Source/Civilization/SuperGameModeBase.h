@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
 #include "Turn/TurnComponent.h"
+#include "Diplomacy/DiplomacyStruct.h"
 
 class ASuperPlayerState;
 
@@ -77,6 +78,57 @@ public:
 
 	// 지금 턴인 사람 슬롯이 골드로 유닛을 구매합니다. 그 슬롯의 도시 옆에 그 슬롯 유닛으로 나옵니다.
 	bool RequestPurchaseUnit(int32 RequestingPlayerIndex, FName UnitName);
+
+	// 호스트에서 유닛 소환이 성공하면 참가자에게 슬롯, 이름, 칸을 알립니다.
+	void NotifyRemoteUnitSpawned(int32 PlayerIndex, FName UnitName, FVector2D Hex);
+
+	// 지금 턴인 사람 슬롯의 유닛을 호스트 월드에서 옮기고, 성공하면 참가자에게 같은 칸을 알립니다.
+	bool RequestMoveUnit(int32 RequestingPlayerIndex, FVector2D FromHex, FVector2D ToHex);
+
+	// 지금 턴인 사람 슬롯의 유닛으로 대상 칸을 공격합니다.
+	bool RequestCombat(int32 RequestingPlayerIndex, FVector2D AttackerHex, FVector2D TargetHex);
+
+	// 호스트에서 이동이 성공하면 참가자에게 같은 칸을 알립니다.
+	void NotifyRemoteUnitMoved(FVector2D FromHex, FVector2D ToHex);
+
+	// 호스트에서 전투가 성공하면 참가자에게 같은 칸을 알립니다.
+	void NotifyRemoteCombat(FVector2D AttackerHex, FVector2D TargetHex);
+
+	// 턴이 끝난 슬롯의 이동력과 공격 가능 상태를 참가자 화면에 되돌립니다.
+	void NotifyRemoteUnitTurnReset(int32 PlayerIndex);
+
+	// 지금 턴인 사람 슬롯의 건설자가 그 칸에 시설을 짓습니다.
+	bool RequestBuildFacility(int32 RequestingPlayerIndex, FVector2D Hex, FName FacilityRowName);
+
+	// 지금 턴인 사람 슬롯의 건설자가 그 칸의 시설을 고칩니다.
+	bool RequestRepairFacility(int32 RequestingPlayerIndex, FVector2D Hex);
+
+	// 지금 턴인 사람 슬롯의 건설자가 그 칸의 시설을 치웁니다.
+	bool RequestDestroyFacility(int32 RequestingPlayerIndex, FVector2D Hex);
+
+	// 지금 턴인 사람 슬롯이 골드로 칸을 삽니다.
+	bool RequestPurchaseTile(int32 RequestingPlayerIndex, FVector2D Hex);
+
+	// 지금 턴인 사람 슬롯의 외교 행동을 실행합니다.
+	bool RequestDiplomacyAction(int32 RequestingPlayerIndex, EDiplomacyActionType ActionType, int32 TargetPlayerIndex);
+
+	// 호스트에서 시설 건설이 시작되면 참가자에게 같은 칸과 시설명을 알립니다.
+	void NotifyRemoteBuildFacility(FVector2D Hex, FName FacilityRowName);
+
+	// 호스트에서 시설 수리가 시작되면 참가자에게 같은 칸을 알립니다.
+	void NotifyRemoteRepairFacility(FVector2D Hex);
+
+	// 호스트에서 시설 철거가 시작되면 참가자에게 같은 칸을 알립니다.
+	void NotifyRemoteDestroyFacility(FVector2D Hex);
+
+	// 호스트에서 칸 구매가 성공하면 참가자에게 슬롯과 칸을 알립니다.
+	void NotifyRemotePurchaseTile(int32 PlayerIndex, FVector2D Hex);
+
+	// 호스트에서 외교가 성공하면 참가자에게 같은 행동과 액션 번호를 알립니다.
+	void NotifyRemoteDiplomacyAction(int32 FromPlayerIndex, int32 TargetPlayerIndex, EDiplomacyActionType ActionType, int32 ActionId);
+
+	// 턴 종료로 약탈된 칸들을 참가자 월드에 알립니다.
+	void NotifyRemoteFacilitiesPillaged(const TArray<FVector2D>& Hexes);
 
 	// ========== 승리 ==========
 

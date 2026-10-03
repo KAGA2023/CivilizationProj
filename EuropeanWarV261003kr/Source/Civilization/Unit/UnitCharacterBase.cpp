@@ -21,6 +21,10 @@ AUnitCharacterBase::AUnitCharacterBase()
 {
     PrimaryActorTick.bCanEverTick = false;
 
+    // 각 월드의 로컬 유닛입니다. 폰 복제를 끄면 참가자도 직접 걷습니다.
+    bReplicates = false;
+    SetReplicatingMovement(false);
+
     // AI Controller 클래스 설정
     AIControllerClass = AUnitAIController::StaticClass();
     AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
@@ -110,12 +114,27 @@ AUnitCharacterBase::AUnitCharacterBase()
         
         // 중력 설정
         MoveComp->GravityScale = 5.0f; // 중력 영향 5배
+
+        // 참가자는 컨트롤러 없이 싱글과 같은 이동 틱을 탑니다.
+        MoveComp->bRunPhysicsWithNoController = true;
     }
 }
 
 void AUnitCharacterBase::BeginPlay()
 {
     Super::BeginPlay();
+
+    // 참가자는 AI 컨트롤러가 없어 이동 모드가 None으로 남습니다. 걷기 모드를 켭니다.
+    if (GetNetMode() == NM_Client)
+    {
+        if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+        {
+            if (MoveComp->MovementMode == MOVE_None)
+            {
+                MoveComp->SetDefaultMovementMode();
+            }
+        }
+    }
 
     // UnitDataTable 로드
     LoadUnitDataTable();

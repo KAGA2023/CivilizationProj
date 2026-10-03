@@ -171,15 +171,11 @@ void UUnitVisualizationComponent::UpdateMovement(float DeltaTime)
     // 점프 체크 및 실행
     CheckAndExecuteJump();
 
-    // 이동 입력 적용
     if (UCharacterMovementComponent* MoveComp = Unit->GetCharacterMovement())
     {
-        // 이동 속도 설정
         MoveComp->MaxWalkSpeed = MovementSpeed;
-
-        // 이동 입력 적용
-        Unit->AddMovementInput(Direction, 1.0f);
     }
+    Unit->AddMovementInput(Direction, 1.0f);
 
     // 목표 도착 체크
     if (HasReachedTarget())
@@ -444,15 +440,11 @@ void UUnitVisualizationComponent::UpdateCombatMovement(float DeltaTime)
         CheckAndExecuteJump();
     }
 
-    // 이동 입력 적용
     if (UCharacterMovementComponent* MoveComp = Unit->GetCharacterMovement())
     {
-        // 이동 속도 설정
         MoveComp->MaxWalkSpeed = MovementSpeed;
-
-        // 이동 입력 적용
-        Unit->AddMovementInput(Direction, 1.0f);
     }
+    Unit->AddMovementInput(Direction, 1.0f);
 
     // 목표 도착 체크
     if (HasReachedCombatTarget())

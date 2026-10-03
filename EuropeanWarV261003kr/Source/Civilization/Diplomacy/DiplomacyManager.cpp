@@ -11,6 +11,19 @@ UDiplomacyManager::UDiplomacyManager()
 {
 }
 
+bool UDiplomacyManager::IsLocalPlayerInvolved(int32 FromPlayerId, int32 ToPlayerId) const
+{
+	int32 LocalPlayerIndex = 0;
+	if (UWorld* World = GetWorld())
+	{
+		if (USuperGameInstance* GameInstance = Cast<USuperGameInstance>(World->GetGameInstance()))
+		{
+			LocalPlayerIndex = GameInstance->GetLocalPlayerIndex();
+		}
+	}
+	return FromPlayerId == LocalPlayerIndex || ToPlayerId == LocalPlayerIndex;
+}
+
 void UDiplomacyManager::Initialize(int32 NumPlayers)
 {
 	PlayerCount = NumPlayers;
@@ -483,8 +496,7 @@ int32 UDiplomacyManager::IssueAction(const FDiplomacyAction& Action)
 		Action.Action == EDiplomacyActionType::Denounce || 
 		Action.Action == EDiplomacyActionType::SendGift)
 	{
-		const bool bPlayer0Involved = (NewAction.FromPlayerId == 0 || NewAction.ToPlayerId == 0);
-		if (bPlayer0Involved)
+		if (IsLocalPlayerInvolved(NewAction.FromPlayerId, NewAction.ToPlayerId))
 		{
 			if (NewAction.Action == EDiplomacyActionType::DeclareWar)
 			{
@@ -570,7 +582,7 @@ void UDiplomacyManager::ResolveAction(int32 ActionId, bool bAccepted)
 			MakePeace(Action.FromPlayerId, Action.ToPlayerId, CachedCurrentRound);
 			AddAttitude(Action.ToPlayerId, Action.FromPlayerId, +10);
 			AddAttitude(Action.FromPlayerId, Action.ToPlayerId, +10);
-			if (Action.FromPlayerId == 0 || Action.ToPlayerId == 0)
+			if (IsLocalPlayerInvolved(Action.FromPlayerId, Action.ToPlayerId))
 			{
 				if (USoundBase* HeavyDiplocySound = LoadObject<USoundBase>(nullptr, TEXT("/Game/Civilization/Sound/HeavyDiplocy.HeavyDiplocy")))
 				{
@@ -593,7 +605,7 @@ void UDiplomacyManager::ResolveAction(int32 ActionId, bool bAccepted)
 			MakeAlliance(Action.FromPlayerId, Action.ToPlayerId, CachedCurrentRound);
 			AddAttitude(Action.ToPlayerId, Action.FromPlayerId, +10);
 			AddAttitude(Action.FromPlayerId, Action.ToPlayerId, +10);
-			if (Action.FromPlayerId == 0 || Action.ToPlayerId == 0)
+			if (IsLocalPlayerInvolved(Action.FromPlayerId, Action.ToPlayerId))
 			{
 				if (USoundBase* HeavyDiplocySound = LoadObject<USoundBase>(nullptr, TEXT("/Game/Civilization/Sound/HeavyDiplocy.HeavyDiplocy")))
 				{

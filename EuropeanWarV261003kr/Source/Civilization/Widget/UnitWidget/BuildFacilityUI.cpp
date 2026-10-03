@@ -3,6 +3,7 @@
 #include "../../SuperPlayerState.h"
 #include "../../Facility/FacilityManager.h"
 #include "../../Unit/UnitManager.h"
+#include "../../SuperGameController.h"
 #include "../../World/WorldComponent.h"
 #include "../../World/WorldStruct.h"
 
@@ -137,7 +138,15 @@ void UBuildFacilityUI::OnClickedRepairFacility()
 	}
 	CachedUnitManager->ClearAllTileBrightness();
 	CachedUnitManager->ClearSelectedUnit();
-	CachedUnitManager->RequestBuilderRepairFacility(CachedHex);
+	APlayerController* OwningPlayer = GetOwningPlayer();
+	if (!OwningPlayer && GetWorld())
+	{
+		OwningPlayer = GetWorld()->GetFirstPlayerController();
+	}
+	if (ASuperGameController* GameController = Cast<ASuperGameController>(OwningPlayer))
+	{
+		GameController->ServerRequestRepairFacility(CachedHex);
+	}
 	// 실제 수리는 몽타주 종료 후 실행되며, OnFacilityChanged에서 버튼 상태 갱신
 }
 
@@ -150,7 +159,15 @@ void UBuildFacilityUI::OnClickedDestroyFacility()
 	CachedUnitManager->ClearAllTileBrightness();
 	CachedUnitManager->ClearSelectedUnit();
 	const FVector2D Hex = CachedTile->GetGridPosition();
-	CachedUnitManager->RequestBuilderDestroyFacility(Hex);
+	APlayerController* OwningPlayer = GetOwningPlayer();
+	if (!OwningPlayer && GetWorld())
+	{
+		OwningPlayer = GetWorld()->GetFirstPlayerController();
+	}
+	if (ASuperGameController* GameController = Cast<ASuperGameController>(OwningPlayer))
+	{
+		GameController->ServerRequestDestroyFacility(Hex);
+	}
 	// 실제 제거는 몽타주 종료 후 실행되며, OnFacilityChanged에서 버튼 상태 갱신
 }
 
@@ -166,7 +183,15 @@ void UBuildFacilityUI::BuildFacilityByRowName(const FName& RowName)
 		CachedUnitManager->ClearSelectedUnit();
 	}
 	const FVector2D Hex = CachedTile->GetGridPosition();
-	CachedPlayerState->BuildFacility(RowName, Hex);
+	APlayerController* OwningPlayer = GetOwningPlayer();
+	if (!OwningPlayer && GetWorld())
+	{
+		OwningPlayer = GetWorld()->GetFirstPlayerController();
+	}
+	if (ASuperGameController* GameController = Cast<ASuperGameController>(OwningPlayer))
+	{
+		GameController->ServerRequestBuildFacility(Hex, RowName);
+	}
 }
 
 void UBuildFacilityUI::UpdateButtonStates(const TArray<FName>& AvailableFacilities)
@@ -282,11 +307,12 @@ void UBuildFacilityUI::UpdateButtonStates(const TArray<FName>& AvailableFaciliti
 		DestroyFacilityBtn->SetIsEnabled(bEnableDestroy);
 	}
 
-	// 수리 버튼: 자신 소유 + 시설 있음 + 약탈 상태일 때만 활성화 (플레이어 0 = 로컬 플레이어)
+	// 수리 버튼: 이 기기 슬롯 소유 + 시설 있음 + 약탈 상태일 때만 활성화
 	if (RepairFacilityBtn)
 	{
-		const bool bCanRepair = CachedFacilityManager && CachedWorldComponent
-			&& CachedFacilityManager->CanRepairFacilityAtTile(CachedHex, 0, CachedWorldComponent);
+		const int32 LocalPlayerIndex = CachedPlayerState ? CachedPlayerState->PlayerIndex : -1;
+		const bool bCanRepair = CachedFacilityManager && CachedWorldComponent && LocalPlayerIndex >= 0
+			&& CachedFacilityManager->CanRepairFacilityAtTile(CachedHex, LocalPlayerIndex, CachedWorldComponent);
 		RepairFacilityBtn->SetIsEnabled(bCanRepair);
 	}
 }

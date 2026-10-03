@@ -260,6 +260,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Unit Management")
     void AddOwnedUnit(class AUnitCharacterBase* Unit); // 소유 유닛 추가
 
+    // 이 월드에 유닛이 하나 생겼을 때 인구를 1 올립니다.
+    void AddSpawnedUnitPopulation();
+
     UFUNCTION(BlueprintCallable, Category = "Unit Management")
     void RemoveOwnedUnit(class AUnitCharacterBase* Unit); // 소유 유닛 제거
 
@@ -424,6 +427,9 @@ public:
     bool IsAlive() const { return !bIsDefeated; }
 
 private:
+    // 이 월드에서 소환에 성공하면 인구를 올리고, 호스트면 참가자에게 칸을 알립니다.
+    void OnUnitSpawnedLocally(FName UnitName, FVector2D SpawnHex);
+
     // 플레이어(인간) 패배 처리
     void OnPlayerDefeated_Human();
     

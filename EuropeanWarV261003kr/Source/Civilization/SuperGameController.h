@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Diplomacy/DiplomacyStruct.h"
 #include "GameFramework/PlayerController.h"
 #include "EnhancedInputSubsystems.h"
 #include "EnhancedInputComponent.h"
@@ -128,7 +129,7 @@ public:
 	UFUNCTION(Server, Reliable)
 	void ServerRequestEndPlayerTurn();
 
-	// 호스트가 승인한 턴 마무리를 참가자 월드에 적용합니다. 생산·연구 진행과 유닛 생성이 여기 있습니다.
+	// 호스트가 승인한 턴 마무리를 참가자 월드에 적용합니다. 생산·연구 진행이 여기 있습니다. 유닛 소환은 ClientApplySpawnedUnit이 합니다.
 	UFUNCTION(Client, Reliable)
 	void ClientApplyEndPlayerTurn();
 
@@ -170,9 +171,81 @@ public:
 	UFUNCTION(Client, Reliable)
 	void ClientApplyPurchaseBuilding(FName BuildingRowName);
 
-	// 호스트가 승인한 유닛 구매를 참가자 월드에 적용합니다.
+	// 호스트가 승인한 유닛 구매를 참가자 월드에 적용합니다. 골드와 전략 자원만 맞추고, 유닛은 ClientApplySpawnedUnit이 냅니다.
 	UFUNCTION(Client, Reliable)
 	void ClientApplyPurchaseUnit(FName UnitName);
+
+	// 호스트가 정한 칸에 그 슬롯 유닛을 참가자 월드에 냅니다.
+	UFUNCTION(Client, Reliable)
+	void ClientApplySpawnedUnit(int32 PlayerIndex, FName UnitName, FVector2D Hex);
+
+	// ========== 이동 / 전투 RPC ==========
+
+	// 확정된 이동을 호스트에 요청합니다. 출발 칸과 도착 칸만 보냅니다.
+	UFUNCTION(Server, Reliable)
+	void ServerRequestMoveUnit(FVector2D FromHex, FVector2D ToHex);
+
+	// 확정된 공격을 호스트에 요청합니다. 공격자 칸과 대상 칸만 보냅니다.
+	UFUNCTION(Server, Reliable)
+	void ServerRequestCombat(FVector2D AttackerHex, FVector2D TargetHex);
+
+	// 호스트가 승인한 이동을 참가자 월드에 적용합니다.
+	UFUNCTION(Client, Reliable)
+	void ClientApplyMoveUnit(FVector2D FromHex, FVector2D ToHex);
+
+	// 호스트가 승인한 전투를 참가자 월드에 적용합니다.
+	UFUNCTION(Client, Reliable)
+	void ClientApplyCombat(FVector2D AttackerHex, FVector2D TargetHex);
+
+	// 턴이 끝난 슬롯 유닛의 이동력과 공격 가능 상태를 참가자 월드에 되돌립니다.
+	UFUNCTION(Client, Reliable)
+	void ClientApplyResetUnitTurn(int32 PlayerIndex);
+
+	// ========== 시설 / 타일 / 외교 RPC ==========
+
+	// 시설 건설을 호스트에 요청합니다. 칸과 시설명만 보냅니다.
+	UFUNCTION(Server, Reliable)
+	void ServerRequestBuildFacility(FVector2D Hex, FName FacilityRowName);
+
+	// 시설 수리를 호스트에 요청합니다.
+	UFUNCTION(Server, Reliable)
+	void ServerRequestRepairFacility(FVector2D Hex);
+
+	// 시설 철거를 호스트에 요청합니다.
+	UFUNCTION(Server, Reliable)
+	void ServerRequestDestroyFacility(FVector2D Hex);
+
+	// 골드 타일 구매를 호스트에 요청합니다.
+	UFUNCTION(Server, Reliable)
+	void ServerRequestPurchaseTile(FVector2D Hex);
+
+	// 외교 행동을 호스트에 요청합니다. 행동 종류와 상대 슬롯만 보냅니다.
+	UFUNCTION(Server, Reliable)
+	void ServerRequestDiplomacyAction(EDiplomacyActionType ActionType, int32 TargetPlayerIndex);
+
+	// 호스트가 승인한 시설 건설을 참가자 월드에서 실행합니다.
+	UFUNCTION(Client, Reliable)
+	void ClientApplyBuildFacility(FVector2D Hex, FName FacilityRowName);
+
+	// 호스트가 승인한 시설 수리를 참가자 월드에서 실행합니다.
+	UFUNCTION(Client, Reliable)
+	void ClientApplyRepairFacility(FVector2D Hex);
+
+	// 호스트가 승인한 시설 철거를 참가자 월드에서 실행합니다.
+	UFUNCTION(Client, Reliable)
+	void ClientApplyDestroyFacility(FVector2D Hex);
+
+	// 턴 종료로 약탈된 칸의 시설을 참가자 월드에서 약탈 상태로 바꿉니다.
+	UFUNCTION(Client, Reliable)
+	void ClientApplyPillagedFacilities(const TArray<FVector2D>& Hexes);
+
+	// 호스트가 승인한 칸 구매를 참가자 월드의 그 슬롯에 적용합니다.
+	UFUNCTION(Client, Reliable)
+	void ClientApplyPurchaseTile(int32 PlayerIndex, FVector2D Hex);
+
+	// 호스트가 승인한 외교를 참가자 월드에서 실행합니다.
+	UFUNCTION(Client, Reliable)
+	void ClientApplyDiplomacyAction(int32 FromPlayerIndex, int32 TargetPlayerIndex, EDiplomacyActionType ActionType, int32 ActionId);
 
 private:
 	// 호스트에서 이 컨트롤러의 문명 슬롯을 정합니다. 호스트 0, 참가자 1.

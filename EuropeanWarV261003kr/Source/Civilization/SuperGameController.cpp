@@ -5,9 +5,14 @@
 #include "SuperCameraPawn.h"
 #include "SuperGameInstance.h"
 #include "SuperGameModeBase.h"
+#include "SuperGameState.h"
 #include "SuperPlayerState.h"
+#include "Diplomacy/DiplomacyManager.h"
+#include "World/WorldComponent.h"
+#include "Facility/FacilityManager.h"
 #include "LobbyGameState.h"
 #include "World/WorldStruct.h"
+#include "Unit/UnitManager.h"
 #include "Multiplayer/MultiplayerSessionSubsystem.h"
 
 ASuperGameController::ASuperGameController()
@@ -233,10 +238,9 @@ void ASuperGameController::UpdateCameraBoundsFromWorldConfig()
 	int32 R = Config.WorldRadius;
 	if (R <= 0) return;
 
-	// WorldComponent::HexToWorld와 동일한 스케일 (TILE_SIZE = 190)
+	// WorldComponent::HexToWorld와 동일한 스케일
 	// Unreal X = TILE_SIZE * (3/2 * r), Unreal Y = TILE_SIZE * sqrt(3) * (q + r/2)
 	// 반지름 R인 육각형 AABB: X ∈ [-1.5*T*R, 1.5*T*R], Y ∈ [-sqrt(3)*T*R, sqrt(3)*T*R]
-	static const float TILE_SIZE = 190.0f;
 	const float HalfExtentX = 1.5f * TILE_SIZE * static_cast<float>(R);
 	const float HalfExtentY = FMath::Sqrt(3.0f) * TILE_SIZE * static_cast<float>(R);
 	const float Margin = 1.05f; // 가장자리 여유 5%
@@ -478,4 +482,233 @@ void ASuperGameController::ClientApplyPurchaseUnit_Implementation(FName UnitName
 			CivilizationPlayerState->PurchaseUnitWithGold(UnitName);
 		}
 	}
+}
+
+void ASuperGameController::ClientApplySpawnedUnit_Implementation(int32 PlayerIndex, FName UnitName, FVector2D Hex)
+{
+	USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance());
+	if (!GameInstance || UnitName.IsNone())
+	{
+		return;
+	}
+
+	UUnitManager* UnitManager = GameInstance->GetUnitManager();
+	ASuperPlayerState* SlotState = GameInstance->GetPlayerState(PlayerIndex);
+	if (!UnitManager || !SlotState)
+	{
+		return;
+	}
+
+	if (UnitManager->SpawnUnitAtHex(Hex, UnitName, PlayerIndex, true))
+	{
+		SlotState->AddSpawnedUnitPopulation();
+	}
+}
+
+void ASuperGameController::ServerRequestMoveUnit_Implementation(FVector2D FromHex, FVector2D ToHex)
+{
+	if (UWorld* World = GetWorld())
+	{
+		if (ASuperGameModeBase* GameMode = Cast<ASuperGameModeBase>(World->GetAuthGameMode()))
+		{
+			GameMode->RequestMoveUnit(GetRequestingPlayerIndex(), FromHex, ToHex);
+		}
+	}
+}
+
+void ASuperGameController::ServerRequestCombat_Implementation(FVector2D AttackerHex, FVector2D TargetHex)
+{
+	if (UWorld* World = GetWorld())
+	{
+		if (ASuperGameModeBase* GameMode = Cast<ASuperGameModeBase>(World->GetAuthGameMode()))
+		{
+			GameMode->RequestCombat(GetRequestingPlayerIndex(), AttackerHex, TargetHex);
+		}
+	}
+}
+
+void ASuperGameController::ClientApplyMoveUnit_Implementation(FVector2D FromHex, FVector2D ToHex)
+{
+	if (USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance()))
+	{
+		if (UUnitManager* UnitManager = GameInstance->GetUnitManager())
+		{
+			UnitManager->MoveUnitFromHexToHex(FromHex, ToHex);
+		}
+	}
+}
+
+void ASuperGameController::ClientApplyCombat_Implementation(FVector2D AttackerHex, FVector2D TargetHex)
+{
+	if (USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance()))
+	{
+		if (UUnitManager* UnitManager = GameInstance->GetUnitManager())
+		{
+			UnitManager->CombatFromHexToHex(AttackerHex, TargetHex, false);
+		}
+	}
+}
+
+void ASuperGameController::ClientApplyResetUnitTurn_Implementation(int32 PlayerIndex)
+{
+	if (USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance()))
+	{
+		if (UUnitManager* UnitManager = GameInstance->GetUnitManager())
+		{
+			UnitManager->ResetPlayerUnitTurn(PlayerIndex);
+		}
+	}
+}
+
+void ASuperGameController::ServerRequestBuildFacility_Implementation(FVector2D Hex, FName FacilityRowName)
+{
+	if (UWorld* World = GetWorld())
+	{
+		if (ASuperGameModeBase* GameMode = Cast<ASuperGameModeBase>(World->GetAuthGameMode()))
+		{
+			GameMode->RequestBuildFacility(GetRequestingPlayerIndex(), Hex, FacilityRowName);
+		}
+	}
+}
+
+void ASuperGameController::ServerRequestRepairFacility_Implementation(FVector2D Hex)
+{
+	if (UWorld* World = GetWorld())
+	{
+		if (ASuperGameModeBase* GameMode = Cast<ASuperGameModeBase>(World->GetAuthGameMode()))
+		{
+			GameMode->RequestRepairFacility(GetRequestingPlayerIndex(), Hex);
+		}
+	}
+}
+
+void ASuperGameController::ServerRequestDestroyFacility_Implementation(FVector2D Hex)
+{
+	if (UWorld* World = GetWorld())
+	{
+		if (ASuperGameModeBase* GameMode = Cast<ASuperGameModeBase>(World->GetAuthGameMode()))
+		{
+			GameMode->RequestDestroyFacility(GetRequestingPlayerIndex(), Hex);
+		}
+	}
+}
+
+void ASuperGameController::ServerRequestPurchaseTile_Implementation(FVector2D Hex)
+{
+	if (UWorld* World = GetWorld())
+	{
+		if (ASuperGameModeBase* GameMode = Cast<ASuperGameModeBase>(World->GetAuthGameMode()))
+		{
+			GameMode->RequestPurchaseTile(GetRequestingPlayerIndex(), Hex);
+		}
+	}
+}
+
+void ASuperGameController::ServerRequestDiplomacyAction_Implementation(EDiplomacyActionType ActionType, int32 TargetPlayerIndex)
+{
+	if (UWorld* World = GetWorld())
+	{
+		if (ASuperGameModeBase* GameMode = Cast<ASuperGameModeBase>(World->GetAuthGameMode()))
+		{
+			GameMode->RequestDiplomacyAction(GetRequestingPlayerIndex(), ActionType, TargetPlayerIndex);
+		}
+	}
+}
+
+void ASuperGameController::ClientApplyBuildFacility_Implementation(FVector2D Hex, FName FacilityRowName)
+{
+	if (USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance()))
+	{
+		if (UUnitManager* UnitManager = GameInstance->GetUnitManager())
+		{
+			UnitManager->RequestBuilderBuildFacility(Hex, FacilityRowName);
+		}
+	}
+}
+
+void ASuperGameController::ClientApplyRepairFacility_Implementation(FVector2D Hex)
+{
+	if (USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance()))
+	{
+		if (UUnitManager* UnitManager = GameInstance->GetUnitManager())
+		{
+			UnitManager->RequestBuilderRepairFacility(Hex);
+		}
+	}
+}
+
+void ASuperGameController::ClientApplyDestroyFacility_Implementation(FVector2D Hex)
+{
+	if (USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance()))
+	{
+		if (UUnitManager* UnitManager = GameInstance->GetUnitManager())
+		{
+			UnitManager->RequestBuilderDestroyFacility(Hex);
+		}
+	}
+}
+
+void ASuperGameController::ClientApplyPillagedFacilities_Implementation(const TArray<FVector2D>& Hexes)
+{
+	USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance());
+	if (!GameInstance)
+	{
+		return;
+	}
+
+	UFacilityManager* FacilityManager = GameInstance->GetFacilityManager();
+	UWorldComponent* WorldComponent = GameInstance->GetGeneratedWorldComponent();
+	if (!FacilityManager || !WorldComponent)
+	{
+		return;
+	}
+
+	for (const FVector2D& Hex : Hexes)
+	{
+		FacilityManager->SetFacilityPillaged(Hex, true, WorldComponent);
+	}
+}
+
+void ASuperGameController::ClientApplyPurchaseTile_Implementation(int32 PlayerIndex, FVector2D Hex)
+{
+	USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance());
+	if (!GameInstance)
+	{
+		return;
+	}
+
+	ASuperPlayerState* SlotState = GameInstance->GetPlayerState(PlayerIndex);
+	UWorldComponent* WorldComponent = GameInstance->GetGeneratedWorldComponent();
+	if (SlotState && WorldComponent)
+	{
+		SlotState->PurchaseTile(Hex, WorldComponent);
+	}
+}
+
+void ASuperGameController::ClientApplyDiplomacyAction_Implementation(int32 FromPlayerIndex, int32 TargetPlayerIndex, EDiplomacyActionType ActionType, int32 ActionId)
+{
+	USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance());
+	UDiplomacyManager* DiplomacyManager = GameInstance ? GameInstance->GetDiplomacyManager() : nullptr;
+	if (!DiplomacyManager)
+	{
+		return;
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		if (const ASuperGameState* InGameState = World->GetGameState<ASuperGameState>())
+		{
+			if (UTurnComponent* Turn = InGameState->GetTurnComponent())
+			{
+				DiplomacyManager->OnRoundStarted(Turn->GetCurrentRoundNumber());
+			}
+		}
+	}
+
+	FDiplomacyAction Action;
+	Action.Action = ActionType;
+	Action.FromPlayerId = FromPlayerIndex;
+	Action.ToPlayerId = TargetPlayerIndex;
+	Action.ActionId = ActionId;
+	DiplomacyManager->IssueAction(Action);
 }

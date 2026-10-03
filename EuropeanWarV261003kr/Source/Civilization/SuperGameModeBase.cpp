@@ -192,7 +192,7 @@ void ASuperGameModeBase::EndCurrentPlayerTurn()
 
 	if (UnitManager && FacilityManager && WorldComponent && DiplomacyManager)
 	{
-		TSet<FVector2D> TilesToPillage;
+		TArray<FVector2D> TilesToPillage;
 		TArray<AUnitCharacterBase*> AllUnits = UnitManager->GetAllUnits();
 
 		for (AUnitCharacterBase* Unit : AllUnits)
@@ -228,12 +228,20 @@ void ASuperGameModeBase::EndCurrentPlayerTurn()
 				continue;
 			}
 
-			TilesToPillage.Add(TileCoord);
+			if (!TilesToPillage.Contains(TileCoord))
+			{
+				TilesToPillage.Add(TileCoord);
+			}
 		}
 
 		for (const FVector2D& Coord : TilesToPillage)
 		{
 			FacilityManager->SetFacilityPillaged(Coord, true, WorldComponent);
+		}
+
+		if (TilesToPillage.Num() > 0)
+		{
+			NotifyRemoteFacilitiesPillaged(TilesToPillage);
 		}
 	}
 	// ========== 약탈 처리 끝 ==========
@@ -245,20 +253,11 @@ void ASuperGameModeBase::EndCurrentPlayerTurn()
 		PlayerState->ProcessTurnResources();
 	}
 
-	// 현재 플레이어의 모든 유닛 이동력 회복
+	// 현재 플레이어의 모든 유닛 이동력 회복. 참가자 화면에도 같은 슬롯을 되돌립니다.
 	if (UnitManager)
 	{
-		TArray<AUnitCharacterBase*> AllUnits = UnitManager->GetAllUnits();
-		for (AUnitCharacterBase* Unit : AllUnits)
-		{
-			if (Unit && Unit->GetPlayerIndex() == CurrentPlayerIndex)
-			{
-				if (UUnitStatusComponent* StatusComp = Unit->GetUnitStatusComponent())
-				{
-					StatusComp->ResetTurn();
-				}
-			}
-		}
+		UnitManager->ResetPlayerUnitTurn(CurrentPlayerIndex);
+		NotifyRemoteUnitTurnReset(CurrentPlayerIndex);
 	}
 }
 
@@ -353,6 +352,349 @@ bool ASuperGameModeBase::RequestPurchaseUnit(int32 RequestingPlayerIndex, FName 
 	}
 
 	return PlayerState->PurchaseUnitWithGold(UnitName);
+}
+
+void ASuperGameModeBase::NotifyRemoteUnitSpawned(int32 PlayerIndex, FName UnitName, FVector2D Hex)
+{
+	if (PlayerIndex < 0 || UnitName.IsNone() || !GetWorld())
+	{
+		return;
+	}
+
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		ASuperGameController* Controller = Cast<ASuperGameController>(It->Get());
+		if (Controller && !Controller->IsLocalController())
+		{
+			Controller->ClientApplySpawnedUnit(PlayerIndex, UnitName, Hex);
+		}
+	}
+}
+
+bool ASuperGameModeBase::RequestMoveUnit(int32 RequestingPlayerIndex, FVector2D FromHex, FVector2D ToHex)
+{
+	if (!GetPlayerStateIfTurn(RequestingPlayerIndex))
+	{
+		return false;
+	}
+
+	USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance());
+	UUnitManager* UnitManager = GameInstance ? GameInstance->GetUnitManager() : nullptr;
+	if (!UnitManager)
+	{
+		return false;
+	}
+
+	AUnitCharacterBase* Unit = UnitManager->GetUnitAtHex(FromHex);
+	if (!Unit || Unit->GetPlayerIndex() != RequestingPlayerIndex)
+	{
+		return false;
+	}
+
+	if (!UnitManager->MoveUnitFromHexToHex(FromHex, ToHex))
+	{
+		return false;
+	}
+
+	NotifyRemoteUnitMoved(FromHex, ToHex);
+	return true;
+}
+
+bool ASuperGameModeBase::RequestCombat(int32 RequestingPlayerIndex, FVector2D AttackerHex, FVector2D TargetHex)
+{
+	if (!GetPlayerStateIfTurn(RequestingPlayerIndex))
+	{
+		return false;
+	}
+
+	USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance());
+	UUnitManager* UnitManager = GameInstance ? GameInstance->GetUnitManager() : nullptr;
+	if (!UnitManager)
+	{
+		return false;
+	}
+
+	AUnitCharacterBase* Attacker = UnitManager->GetUnitAtHex(AttackerHex);
+	if (!Attacker || Attacker->GetPlayerIndex() != RequestingPlayerIndex)
+	{
+		return false;
+	}
+
+	if (!UnitManager->CombatFromHexToHex(AttackerHex, TargetHex, true))
+	{
+		return false;
+	}
+
+	NotifyRemoteCombat(AttackerHex, TargetHex);
+	return true;
+}
+
+void ASuperGameModeBase::NotifyRemoteUnitMoved(FVector2D FromHex, FVector2D ToHex)
+{
+	if (!GetWorld())
+	{
+		return;
+	}
+
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		ASuperGameController* Controller = Cast<ASuperGameController>(It->Get());
+		if (Controller && !Controller->IsLocalController())
+		{
+			Controller->ClientApplyMoveUnit(FromHex, ToHex);
+		}
+	}
+}
+
+void ASuperGameModeBase::NotifyRemoteCombat(FVector2D AttackerHex, FVector2D TargetHex)
+{
+	if (!GetWorld())
+	{
+		return;
+	}
+
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		ASuperGameController* Controller = Cast<ASuperGameController>(It->Get());
+		if (Controller && !Controller->IsLocalController())
+		{
+			Controller->ClientApplyCombat(AttackerHex, TargetHex);
+		}
+	}
+}
+
+static bool IsOwnedBuilderAtHex(UUnitManager* UnitManager, int32 PlayerIndex, FVector2D Hex)
+{
+	if (!UnitManager)
+	{
+		return false;
+	}
+
+	AUnitCharacterBase* Unit = UnitManager->GetUnitAtHex(Hex);
+	return Unit && Unit->GetPlayerIndex() == PlayerIndex && UnitManager->IsBuilderUnit(Unit);
+}
+
+bool ASuperGameModeBase::RequestBuildFacility(int32 RequestingPlayerIndex, FVector2D Hex, FName FacilityRowName)
+{
+	if (!GetPlayerStateIfTurn(RequestingPlayerIndex) || FacilityRowName.IsNone())
+	{
+		return false;
+	}
+
+	USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance());
+	UUnitManager* UnitManager = GameInstance ? GameInstance->GetUnitManager() : nullptr;
+	if (!IsOwnedBuilderAtHex(UnitManager, RequestingPlayerIndex, Hex))
+	{
+		return false;
+	}
+
+	UnitManager->RequestBuilderBuildFacility(Hex, FacilityRowName);
+	NotifyRemoteBuildFacility(Hex, FacilityRowName);
+	return true;
+}
+
+bool ASuperGameModeBase::RequestRepairFacility(int32 RequestingPlayerIndex, FVector2D Hex)
+{
+	if (!GetPlayerStateIfTurn(RequestingPlayerIndex))
+	{
+		return false;
+	}
+
+	USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance());
+	UUnitManager* UnitManager = GameInstance ? GameInstance->GetUnitManager() : nullptr;
+	if (!IsOwnedBuilderAtHex(UnitManager, RequestingPlayerIndex, Hex))
+	{
+		return false;
+	}
+
+	UnitManager->RequestBuilderRepairFacility(Hex);
+	NotifyRemoteRepairFacility(Hex);
+	return true;
+}
+
+bool ASuperGameModeBase::RequestDestroyFacility(int32 RequestingPlayerIndex, FVector2D Hex)
+{
+	if (!GetPlayerStateIfTurn(RequestingPlayerIndex))
+	{
+		return false;
+	}
+
+	USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance());
+	UUnitManager* UnitManager = GameInstance ? GameInstance->GetUnitManager() : nullptr;
+	if (!IsOwnedBuilderAtHex(UnitManager, RequestingPlayerIndex, Hex))
+	{
+		return false;
+	}
+
+	UnitManager->RequestBuilderDestroyFacility(Hex);
+	NotifyRemoteDestroyFacility(Hex);
+	return true;
+}
+
+bool ASuperGameModeBase::RequestPurchaseTile(int32 RequestingPlayerIndex, FVector2D Hex)
+{
+	ASuperPlayerState* PlayerState = GetPlayerStateIfTurn(RequestingPlayerIndex);
+	USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance());
+	UWorldComponent* WorldComponent = GameInstance ? GameInstance->GetGeneratedWorldComponent() : nullptr;
+	if (!PlayerState || !WorldComponent)
+	{
+		return false;
+	}
+
+	if (!PlayerState->PurchaseTile(Hex, WorldComponent))
+	{
+		return false;
+	}
+
+	NotifyRemotePurchaseTile(RequestingPlayerIndex, Hex);
+	return true;
+}
+
+bool ASuperGameModeBase::RequestDiplomacyAction(int32 RequestingPlayerIndex, EDiplomacyActionType ActionType, int32 TargetPlayerIndex)
+{
+	if (!GetPlayerStateIfTurn(RequestingPlayerIndex) || ActionType == EDiplomacyActionType::None)
+	{
+		return false;
+	}
+
+	USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance());
+	UDiplomacyManager* DiplomacyManager = GameInstance ? GameInstance->GetDiplomacyManager() : nullptr;
+	if (!DiplomacyManager)
+	{
+		return false;
+	}
+
+	FDiplomacyAction Action;
+	Action.Action = ActionType;
+	Action.FromPlayerId = RequestingPlayerIndex;
+	Action.ToPlayerId = TargetPlayerIndex;
+	const int32 ActionId = DiplomacyManager->IssueAction(Action);
+	if (ActionId == -1)
+	{
+		return false;
+	}
+
+	NotifyRemoteDiplomacyAction(RequestingPlayerIndex, TargetPlayerIndex, ActionType, ActionId);
+	return true;
+}
+
+void ASuperGameModeBase::NotifyRemoteBuildFacility(FVector2D Hex, FName FacilityRowName)
+{
+	if (!GetWorld())
+	{
+		return;
+	}
+
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		ASuperGameController* Controller = Cast<ASuperGameController>(It->Get());
+		if (Controller && !Controller->IsLocalController())
+		{
+			Controller->ClientApplyBuildFacility(Hex, FacilityRowName);
+		}
+	}
+}
+
+void ASuperGameModeBase::NotifyRemoteRepairFacility(FVector2D Hex)
+{
+	if (!GetWorld())
+	{
+		return;
+	}
+
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		ASuperGameController* Controller = Cast<ASuperGameController>(It->Get());
+		if (Controller && !Controller->IsLocalController())
+		{
+			Controller->ClientApplyRepairFacility(Hex);
+		}
+	}
+}
+
+void ASuperGameModeBase::NotifyRemoteDestroyFacility(FVector2D Hex)
+{
+	if (!GetWorld())
+	{
+		return;
+	}
+
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		ASuperGameController* Controller = Cast<ASuperGameController>(It->Get());
+		if (Controller && !Controller->IsLocalController())
+		{
+			Controller->ClientApplyDestroyFacility(Hex);
+		}
+	}
+}
+
+void ASuperGameModeBase::NotifyRemotePurchaseTile(int32 PlayerIndex, FVector2D Hex)
+{
+	if (PlayerIndex < 0 || !GetWorld())
+	{
+		return;
+	}
+
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		ASuperGameController* Controller = Cast<ASuperGameController>(It->Get());
+		if (Controller && !Controller->IsLocalController())
+		{
+			Controller->ClientApplyPurchaseTile(PlayerIndex, Hex);
+		}
+	}
+}
+
+void ASuperGameModeBase::NotifyRemoteDiplomacyAction(int32 FromPlayerIndex, int32 TargetPlayerIndex, EDiplomacyActionType ActionType, int32 ActionId)
+{
+	if (!GetWorld())
+	{
+		return;
+	}
+
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		ASuperGameController* Controller = Cast<ASuperGameController>(It->Get());
+		if (Controller && !Controller->IsLocalController())
+		{
+			Controller->ClientApplyDiplomacyAction(FromPlayerIndex, TargetPlayerIndex, ActionType, ActionId);
+		}
+	}
+}
+
+void ASuperGameModeBase::NotifyRemoteFacilitiesPillaged(const TArray<FVector2D>& Hexes)
+{
+	if (Hexes.Num() == 0 || !GetWorld())
+	{
+		return;
+	}
+
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		ASuperGameController* Controller = Cast<ASuperGameController>(It->Get());
+		if (Controller && !Controller->IsLocalController())
+		{
+			Controller->ClientApplyPillagedFacilities(Hexes);
+		}
+	}
+}
+
+void ASuperGameModeBase::NotifyRemoteUnitTurnReset(int32 PlayerIndex)
+{
+	if (PlayerIndex < 0 || !GetWorld())
+	{
+		return;
+	}
+
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		ASuperGameController* Controller = Cast<ASuperGameController>(It->Get());
+		if (Controller && !Controller->IsLocalController())
+		{
+			Controller->ClientApplyResetUnitTurn(PlayerIndex);
+		}
+	}
 }
 
 void ASuperGameModeBase::SetCountryNames(const TArray<FName>& InCountryNames)

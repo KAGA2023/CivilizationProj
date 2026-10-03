@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "../../Diplomacy/DiplomacyStruct.h"
 #include "DiplomacyUI.generated.h"
 
 class ASuperPlayerState;
@@ -52,6 +53,16 @@ protected:
 
 	UFUNCTION()
 	void OnCloseBtnClicked();
+
+	// 외교 행동과 상태 변경이 반영되면 버튼과 관계 박스를 다시 그립니다.
+	UFUNCTION()
+	void OnDiplomacyActionIssuedHandler(const FDiplomacyAction& Action);
+
+	UFUNCTION()
+	void OnDiplomacyStatusChangedHandler(int32 PlayerA, int32 PlayerB, EDiplomacyStatusType NewStatus);
+
+	// 열린 대상에게 외교 행동을 호스트에 요청합니다.
+	void RequestDiplomacyAction(EDiplomacyActionType ActionType);
 
 	// ========== BindWidget ==========
 

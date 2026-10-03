@@ -217,13 +217,19 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Move Selection")
     bool HasMoveSecondSelection() const { return MoveSecondSelectedTile != nullptr; }
 
-    // 첫 선택에서 둘째 선택으로 유닛을 옮깁니다.
-    void MoveUnitFromFirstToSecondSelection();
+    // 두 번째 클릭이 이동 확정이면 칸을 돌려주고 선택과 하이라이트를 지웁니다.
+    bool ConfirmMoveSelection(class UWorldTile* ClickedTile, FVector2D& OutFromHex, FVector2D& OutToHex);
+
+    // 출발 칸의 유닛을 도착 칸까지 옮깁니다. 성공하면 true입니다.
+    bool MoveUnitFromHexToHex(FVector2D FromHex, FVector2D ToHex);
+
+    // 그 슬롯 유닛의 이동력과 공격 가능 상태를 되돌립니다.
+    void ResetPlayerUnitTurn(int32 PlayerIndex);
 
     // ========== 시각적 이동 ==========
 
-    // 경로를 따라 시각적 이동을 시작합니다.
-    void StartVisualMovement(class AUnitCharacterBase* Unit, const TArray<FVector2D>& Path);
+    // 경로를 따라 시각적 이동을 시작합니다. 실제로 출발하면 true입니다.
+    bool StartVisualMovement(class AUnitCharacterBase* Unit, const TArray<FVector2D>& Path);
 
     // 연출 없이 바로 옮깁니다. AI용입니다.
     void StartMovementImmediate(class AUnitCharacterBase* Unit, const TArray<FVector2D>& Path);
@@ -300,9 +306,15 @@ public:
 
     // ========== 전투 실행 ==========
 
+    // 두 번째 클릭이 공격 확정이면 칸을 돌려주고 선택과 하이라이트를 지웁니다.
+    bool ConfirmCombatSelection(class UWorldTile* ClickedTile, FVector2D& OutAttackerHex, FVector2D& OutTargetHex);
+
     // 선택된 유닛끼리 전투를 실행합니다.
     UFUNCTION(BlueprintCallable, Category = "Combat")
     void ExecuteCombatBetweenSelectedUnits();
+
+    // 공격자 칸과 대상 칸으로 전투를 실행합니다. 외교 검사는 호스트 확정에서만 켭니다.
+    bool CombatFromHexToHex(FVector2D AttackerHex, FVector2D TargetHex, bool bCheckDiplomacy = true);
 
     // 전투 연출이 끝나면 AIController가 호출합니다.
     UFUNCTION(BlueprintCallable, Category = "Combat")
@@ -369,6 +381,9 @@ private:
 
     // 무주·본인·전쟁·동맹 타일만 들어갈 수 있는지 반환합니다.
     bool CanPlayerEnterTile(FVector2D HexPosition, int32 MoverPlayerIndex) const;
+
+    // 공격자 슬롯이 그 칸의 유닛이나 도시와 전쟁 중인지 반환합니다.
+    bool IsHostileCombatTarget(class AUnitCharacterBase* Attacker, FVector2D TargetHex) const;
 
     // 쫓아내기용으로 가장 가까운 배치 가능 hex를 찾습니다.
     bool FindNearestValidTileForEviction(FVector2D FromHex, class AUnitCharacterBase* Unit, FVector2D& OutHex) const;

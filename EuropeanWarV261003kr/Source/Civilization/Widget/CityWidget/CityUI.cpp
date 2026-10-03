@@ -7,6 +7,7 @@
 #include "Components/Button.h"
 #include "Components/Border.h"
 #include "../../SuperGameInstance.h"
+#include "../../SuperGameController.h"
 #include "../../SuperPlayerState.h"
 #include "../../World/WorldComponent.h"
 #include "../../World/WorldTileActor.h"
@@ -665,22 +666,14 @@ void UCityUI::OnPurchaseTileClickedHandler(FVector2D TileCoordinate)
 		return;
 	}
 
-	// 타일 구매 실행
-	if (PlayerState->PurchaseTile(TileCoordinate, WorldComponent))
+	APlayerController* OwningPlayer = GetOwningPlayer();
+	if (!OwningPlayer && GetWorld())
 	{
-		// 구매 성공
-		// 구매 가능한 타일 목록 재계산
-		FindPurchaseableTiles();
-		
-		// 하이라이트 업데이트
-		HighlightPurchaseableTiles();
-		
-		// 도시 데이터 UI 업데이트 (골드 등)
-		UpdateCityData();
+		OwningPlayer = GetWorld()->GetFirstPlayerController();
 	}
-	else
+	if (ASuperGameController* GameController = Cast<ASuperGameController>(OwningPlayer))
 	{
-		// 구매 실패 (골드 부족 등)
+		GameController->ServerRequestPurchaseTile(TileCoordinate);
 	}
 }
 
@@ -689,8 +682,7 @@ void UCityUI::OnGoldChanged(int32 NewGold)
 	// 구매 모드일 때만 재계산
 	if (bIsTilePurchaseMode)
 	{
-		// 구매 가능한 타일 목록은 동일하지만, 골드 부족으로 인해 일부 타일이 구매 불가능할 수 있음
-		// 간단하게 하이라이트만 업데이트 (실제 구매 가능 여부는 클릭 시 재확인)
+		FindPurchaseableTiles();
 		HighlightPurchaseableTiles();
 		
 		// 도시 데이터 업데이트 (골드 표시)

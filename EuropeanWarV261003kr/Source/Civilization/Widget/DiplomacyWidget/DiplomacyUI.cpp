@@ -12,6 +12,7 @@
 #include "../../SuperGameState.h"
 #include "../../Diplomacy/DiplomacyManager.h"
 #include "../../Diplomacy/DiplomacyStruct.h"
+#include "../../SuperGameController.h"
 #include "Engine/Texture2D.h"
 #include "Engine/World.h"
 
@@ -60,6 +61,14 @@ void UDiplomacyUI::SetupForPlayer(int32 TargetPlayerIndex, ASuperPlayerState* Ta
 
 	// 플레이어 인덱스 저장
 	CurrentTargetPlayerIndex = TargetPlayerIndex;
+
+	if (UDiplomacyManager* DiplomacyManager = GetDiplomacyManager())
+	{
+		DiplomacyManager->OnDiplomacyActionIssued.RemoveDynamic(this, &UDiplomacyUI::OnDiplomacyActionIssuedHandler);
+		DiplomacyManager->OnDiplomacyActionIssued.AddDynamic(this, &UDiplomacyUI::OnDiplomacyActionIssuedHandler);
+		DiplomacyManager->OnDiplomacyStatusChanged.RemoveDynamic(this, &UDiplomacyUI::OnDiplomacyStatusChangedHandler);
+		DiplomacyManager->OnDiplomacyStatusChanged.AddDynamic(this, &UDiplomacyUI::OnDiplomacyStatusChangedHandler);
+	}
 
 	// CountryTxt 설정
 	if (CountryTxt)
@@ -255,170 +264,71 @@ void UDiplomacyUI::UpdateRelationBoxes()
 	}
 }
 
-void UDiplomacyUI::OnSendGiftBtnClicked()
+void UDiplomacyUI::RequestDiplomacyAction(EDiplomacyActionType ActionType)
 {
 	if (CurrentTargetPlayerIndex < 0)
 	{
 		return;
 	}
 
-	UDiplomacyManager* DiplomacyManager = GetDiplomacyManager();
-	if (!DiplomacyManager)
+	APlayerController* OwningPlayer = GetOwningPlayer();
+	if (!OwningPlayer && GetWorld())
 	{
-		return;
+		OwningPlayer = GetWorld()->GetFirstPlayerController();
 	}
 
-	// 외교 액션 생성
-	FDiplomacyAction Action;
-	Action.Action = EDiplomacyActionType::SendGift;
-	Action.FromPlayerId = GetLocalPlayerIndex();
-	Action.ToPlayerId = CurrentTargetPlayerIndex;
-
-	// 액션 발행
-	int32 ActionId = DiplomacyManager->IssueAction(Action);
-	
-	if (ActionId == -1)
+	if (ASuperGameController* GameController = Cast<ASuperGameController>(OwningPlayer))
 	{
+		GameController->ServerRequestDiplomacyAction(ActionType, CurrentTargetPlayerIndex);
 	}
-	else
+}
+
+void UDiplomacyUI::OnDiplomacyActionIssuedHandler(const FDiplomacyAction& Action)
+{
+	if (Action.FromPlayerId == GetLocalPlayerIndex() && Action.ToPlayerId == CurrentTargetPlayerIndex)
 	{
-		// 버튼 상태 업데이트 (쿨다운 반영)
 		UpdateButtonStates();
-		// 외교 관계 박스 갱신 (GoodHB/BadHB 등)
 		UpdateRelationBoxes();
 	}
+}
+
+void UDiplomacyUI::OnDiplomacyStatusChangedHandler(int32 PlayerA, int32 PlayerB, EDiplomacyStatusType NewStatus)
+{
+	(void)NewStatus;
+	const int32 LocalPlayerIndex = GetLocalPlayerIndex();
+	const bool bInvolvesOpenPair =
+		(PlayerA == LocalPlayerIndex && PlayerB == CurrentTargetPlayerIndex) ||
+		(PlayerB == LocalPlayerIndex && PlayerA == CurrentTargetPlayerIndex);
+	if (bInvolvesOpenPair)
+	{
+		UpdateButtonStates();
+		UpdateRelationBoxes();
+	}
+}
+
+void UDiplomacyUI::OnSendGiftBtnClicked()
+{
+	RequestDiplomacyAction(EDiplomacyActionType::SendGift);
 }
 
 void UDiplomacyUI::OnOfferAllianceBtnClicked()
 {
-	if (CurrentTargetPlayerIndex < 0)
-	{
-		return;
-	}
-
-	UDiplomacyManager* DiplomacyManager = GetDiplomacyManager();
-	if (!DiplomacyManager)
-	{
-		return;
-	}
-
-	// 외교 액션 생성
-	FDiplomacyAction Action;
-	Action.Action = EDiplomacyActionType::OfferAlliance;
-	Action.FromPlayerId = GetLocalPlayerIndex();
-	Action.ToPlayerId = CurrentTargetPlayerIndex;
-
-	// 액션 발행
-	int32 ActionId = DiplomacyManager->IssueAction(Action);
-	
-	if (ActionId == -1)
-	{
-	}
-	else
-	{
-		// 버튼 상태 업데이트
-		UpdateButtonStates();
-	}
+	RequestDiplomacyAction(EDiplomacyActionType::OfferAlliance);
 }
 
 void UDiplomacyUI::OnOfferPeaceBtnClicked()
 {
-	if (CurrentTargetPlayerIndex < 0)
-	{
-		return;
-	}
-
-	UDiplomacyManager* DiplomacyManager = GetDiplomacyManager();
-	if (!DiplomacyManager)
-	{
-		return;
-	}
-
-	// 외교 액션 생성
-	FDiplomacyAction Action;
-	Action.Action = EDiplomacyActionType::OfferPeace;
-	Action.FromPlayerId = GetLocalPlayerIndex();
-	Action.ToPlayerId = CurrentTargetPlayerIndex;
-
-	// 액션 발행
-	int32 ActionId = DiplomacyManager->IssueAction(Action);
-	
-	if (ActionId == -1)
-	{
-	}
-	else
-	{
-		// 버튼 상태 업데이트
-		UpdateButtonStates();
-	}
+	RequestDiplomacyAction(EDiplomacyActionType::OfferPeace);
 }
 
 void UDiplomacyUI::OnDenounceBtnClicked()
 {
-	if (CurrentTargetPlayerIndex < 0)
-	{
-		return;
-	}
-
-	UDiplomacyManager* DiplomacyManager = GetDiplomacyManager();
-	if (!DiplomacyManager)
-	{
-		return;
-	}
-
-	// 외교 액션 생성
-	FDiplomacyAction Action;
-	Action.Action = EDiplomacyActionType::Denounce;
-	Action.FromPlayerId = GetLocalPlayerIndex();
-	Action.ToPlayerId = CurrentTargetPlayerIndex;
-
-	// 액션 발행
-	int32 ActionId = DiplomacyManager->IssueAction(Action);
-	
-	if (ActionId == -1)
-	{
-	}
-	else
-	{
-		// 버튼 상태 업데이트 (쿨다운 반영)
-		UpdateButtonStates();
-		// 외교 관계 박스 갱신 (GoodHB/BadHB 등)
-		UpdateRelationBoxes();
-	}
+	RequestDiplomacyAction(EDiplomacyActionType::Denounce);
 }
 
 void UDiplomacyUI::OnDeclareWarBtnClicked()
 {
-	if (CurrentTargetPlayerIndex < 0)
-	{
-		return;
-	}
-
-	UDiplomacyManager* DiplomacyManager = GetDiplomacyManager();
-	if (!DiplomacyManager)
-	{
-		return;
-	}
-
-	// 외교 액션 생성
-	FDiplomacyAction Action;
-	Action.Action = EDiplomacyActionType::DeclareWar;
-	Action.FromPlayerId = GetLocalPlayerIndex();
-	Action.ToPlayerId = CurrentTargetPlayerIndex;
-
-	// 액션 발행
-	int32 ActionId = DiplomacyManager->IssueAction(Action);
-	
-	if (ActionId == -1)
-	{
-	}
-	else
-	{
-		// 버튼 상태 업데이트 (외교 상태 변경 반영)
-		UpdateButtonStates();
-		// 외교 관계 박스 갱신 (WarHB/AllyHB 등)
-		UpdateRelationBoxes();
-	}
+	RequestDiplomacyAction(EDiplomacyActionType::DeclareWar);
 }
 
 void UDiplomacyUI::UpdateButtonStates()

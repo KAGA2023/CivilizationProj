@@ -129,4 +129,7 @@ public:
 
 	// 다음에 부여할 액션 ID
 	int32 NextActionId = 1;
+
+	// 이 기기의 슬롯이 발신 또는 수신이면 true입니다. 싱글에서는 슬롯 0입니다.
+	bool IsLocalPlayerInvolved(int32 FromPlayerId, int32 ToPlayerId) const;
 };
