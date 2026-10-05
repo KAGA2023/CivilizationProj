@@ -11,24 +11,24 @@ void UPlayerLoseUI::NativeConstruct()
 {
 	Super::NativeConstruct();
 
-	// 플레이어 0의 국가 이미지 세팅 (CountryKingImg -> KingImg, CountryLargeImg -> CountryImg)
+	// 이 기기의 슬롯 이미지 세팅 (CountryKingImg -> KingImg, CountryLargeImg -> CountryImg)
 	if (UWorld* World = GetWorld())
 	{
 		if (USuperGameInstance* SuperGameInst = Cast<USuperGameInstance>(World->GetGameInstance()))
 		{
-			if (ASuperPlayerState* PlayerState0 = SuperGameInst->GetPlayerState(0))
+			if (ASuperPlayerState* LocalPlayerState = SuperGameInst->GetLocalPlayerState())
 			{
-				if (KingImg && !PlayerState0->CountryKingImg.IsNull())
+				if (KingImg && !LocalPlayerState->CountryKingImg.IsNull())
 				{
-					UTexture2D* KingTexture = PlayerState0->CountryKingImg.LoadSynchronous();
+					UTexture2D* KingTexture = LocalPlayerState->CountryKingImg.LoadSynchronous();
 					if (KingTexture)
 					{
 						KingImg->SetBrushFromTexture(KingTexture);
 					}
 				}
-				if (CountryImg && !PlayerState0->CountryLargeImg.IsNull())
+				if (CountryImg && !LocalPlayerState->CountryLargeImg.IsNull())
 				{
-					UTexture2D* CountryTexture = PlayerState0->CountryLargeImg.LoadSynchronous();
+					UTexture2D* CountryTexture = LocalPlayerState->CountryLargeImg.LoadSynchronous();
 					if (CountryTexture)
 					{
 						CountryImg->SetBrushFromTexture(CountryTexture);

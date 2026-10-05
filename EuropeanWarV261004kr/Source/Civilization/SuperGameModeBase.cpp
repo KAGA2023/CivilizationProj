@@ -24,6 +24,9 @@ ASuperGameModeBase::ASuperGameModeBase()
 	// 기본값 초기화
 	bIsGameActive = false;
 	bIsGamePaused = false;
+	bVictoryDeclared = false;
+	bDeferRemoteVictoryNotify = false;
+	VictoryWinnerIndex = INDEX_NONE;
 }
 
 UTurnComponent* ASuperGameModeBase::GetTurnComponent() const
@@ -420,12 +423,20 @@ bool ASuperGameModeBase::RequestCombat(int32 RequestingPlayerIndex, FVector2D At
 		return false;
 	}
 
-	if (!UnitManager->CombatFromHexToHex(AttackerHex, TargetHex, true))
+	const bool bWasVictoryDeclared = bVictoryDeclared;
+	bDeferRemoteVictoryNotify = true;
+	const bool bCombatSucceeded = UnitManager->CombatFromHexToHex(AttackerHex, TargetHex, true);
+	bDeferRemoteVictoryNotify = false;
+	if (!bCombatSucceeded)
 	{
 		return false;
 	}
 
 	NotifyRemoteCombat(AttackerHex, TargetHex);
+	if (!bWasVictoryDeclared && bVictoryDeclared)
+	{
+		NotifyRemoteVictory(VictoryWinnerIndex);
+	}
 	return true;
 }
 
@@ -680,6 +691,23 @@ void ASuperGameModeBase::NotifyRemoteFacilitiesPillaged(const TArray<FVector2D>&
 	}
 }
 
+void ASuperGameModeBase::NotifyRemoteVictory(int32 WinnerIndex)
+{
+	if (WinnerIndex < 0 || !GetWorld())
+	{
+		return;
+	}
+
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		ASuperGameController* Controller = Cast<ASuperGameController>(It->Get());
+		if (Controller && !Controller->IsLocalController())
+		{
+			Controller->ClientApplyVictory(WinnerIndex);
+		}
+	}
+}
+
 void ASuperGameModeBase::NotifyRemoteUnitTurnReset(int32 PlayerIndex)
 {
 	if (PlayerIndex < 0 || !GetWorld())
@@ -710,49 +738,95 @@ void ASuperGameModeBase::SetCountryNames(const TArray<FName>& InCountryNames)
 
 void ASuperGameModeBase::CheckGameEndConditions()
 {
+	if (bVictoryDeclared)
+	{
+		return;
+	}
+
 	USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance());
 	if (!GameInstance)
 	{
 		return;
 	}
-	
-	// 플레이어 0 생존 확인
+
+	// 1대1: 사람이 한 명 패배하고 살아 있는 사람이 한 명이면 그 슬롯이 승리합니다.
+	if (GameInstance->IsInMultiplayerSession())
+	{
+		int32 WinnerIndex = INDEX_NONE;
+		int32 LivingHumans = 0;
+		bool bAnyHumanDefeated = false;
+		const int32 TotalPlayerCount = GameInstance->GetPlayerStateCount();
+		for (int32 i = 0; i < TotalPlayerCount; ++i)
+		{
+			if (!GameInstance->IsHumanPlayerIndex(i))
+			{
+				continue;
+			}
+
+			ASuperPlayerState* State = GameInstance->GetPlayerState(i);
+			if (State && State->IsAlive())
+			{
+				++LivingHumans;
+				WinnerIndex = i;
+			}
+			else if (State && !State->IsAlive())
+			{
+				bAnyHumanDefeated = true;
+			}
+		}
+
+		if (bAnyHumanDefeated && LivingHumans == 1)
+		{
+			OnPlayerVictory(WinnerIndex);
+		}
+		return;
+	}
+
+	// 싱글: 플레이어 0이 살아 있고 나머지 슬롯이 모두 패배면 플레이어 0이 승리합니다.
 	ASuperPlayerState* Player0 = GameInstance->GetPlayerState(0);
 	if (!Player0 || !Player0->IsAlive())
 	{
-		return; // 플레이어 이미 패배 (OnPlayerDefeated_Human에서 처리됨)
+		return;
 	}
-	
-	// 플레이어 0 제외 모두 패배했는가?
-	bool bAllOthersDefeated = true;
-	int32 TotalPlayerCount = GameInstance->GetPlayerStateCount();
-	
-	for (int32 i = 1; i < TotalPlayerCount; i++)
+
+	const int32 TotalPlayerCount = GameInstance->GetPlayerStateCount();
+	for (int32 i = 1; i < TotalPlayerCount; ++i)
 	{
 		ASuperPlayerState* OtherState = GameInstance->GetPlayerState(i);
 		if (OtherState && OtherState->IsAlive())
 		{
-			bAllOthersDefeated = false;
-			break;
+			return;
 		}
 	}
-	
-	if (bAllOthersDefeated)
-	{
-		// 승리!
-		OnPlayerVictory();
-	}
+
+	OnPlayerVictory(0);
 }
 
-void ASuperGameModeBase::OnPlayerVictory()
+void ASuperGameModeBase::OnPlayerVictory(int32 WinnerIndex)
 {
-	// 플레이어 0(플레이어)의 승리 델리게이트 브로드캐스트
-	if (USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance()))
+	if (bVictoryDeclared)
 	{
-		if (ASuperPlayerState* Player0 = GameInstance->GetPlayerState(0))
-		{
-			Player0->OnPlayerVictoryDelegate.Broadcast();
-		}
+		return;
+	}
+
+	USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance());
+	if (!GameInstance)
+	{
+		return;
+	}
+
+	ASuperPlayerState* Winner = GameInstance->GetPlayerState(WinnerIndex);
+	if (!Winner)
+	{
+		return;
+	}
+
+	bVictoryDeclared = true;
+	VictoryWinnerIndex = WinnerIndex;
+	Winner->OnPlayerVictoryDelegate.Broadcast();
+	if (!bDeferRemoteVictoryNotify)
+	{
+		NotifyRemoteVictory(WinnerIndex);
 	}
 }
 

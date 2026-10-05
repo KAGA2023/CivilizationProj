@@ -1523,7 +1523,9 @@ void ASuperPlayerState::SetDefeated()
         {
             OnPlayerDefeated_Human();
         }
-        else if (UWorld* World = GetWorld())
+
+        // 호스트 본인이 패배해도 남은 사람 슬롯을 승자로 판정합니다.
+        if (UWorld* World = GetWorld())
         {
             if (ASuperGameModeBase* GameMode = Cast<ASuperGameModeBase>(World->GetAuthGameMode()))
             {

@@ -130,9 +130,12 @@ public:
 	// 턴 종료로 약탈된 칸들을 참가자 월드에 알립니다.
 	void NotifyRemoteFacilitiesPillaged(const TArray<FVector2D>& Hexes);
 
+	// 호스트가 정한 승자 슬롯을 참가자에게 알립니다.
+	void NotifyRemoteVictory(int32 WinnerIndex);
+
 	// ========== 승리 ==========
 
-	// 플레이어 0이 살아 있고 나머지가 모두 패배했으면 승리를 띄웁니다.
+	// 싱글은 플레이어 0이 살아 있고 나머지가 모두 패배면 승리입니다. 1대1은 살아 있는 사람이 한 명이면 그 슬롯이 승리입니다.
 	UFUNCTION(BlueprintCallable, Category = "Victory")
 	void CheckGameEndConditions();
 
@@ -142,6 +145,15 @@ protected:
 	// 인게임이 진행 중인지
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Game State")
 	bool bIsGameActive;
+
+	// 승자가 한 번 정해지면 다시 판정하지 않습니다.
+	bool bVictoryDeclared;
+
+	// 전투 결과를 먼저 보낸 뒤에 승자를 알리기 위해 원격 알림을 잠시 미룹니다.
+	bool bDeferRemoteVictoryNotify;
+
+	// 이번 판의 승자 슬롯입니다.
+	int32 VictoryWinnerIndex;
 
 	// 일시정지 중인지
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Game State")
@@ -162,8 +174,8 @@ protected:
 	// GI에 문명 플레이어 스테이트를 다시 만듭니다. 호스트/싱글 BeginPlay에서 호출합니다.
 	void CreateAllPlayerStates();
 
-	// 플레이어 0 승리 델리게이트를 띄웁니다.
-	void OnPlayerVictory();
+	// 승자 슬롯의 승리 델리게이트를 한 번 띄웁니다.
+	void OnPlayerVictory(int32 WinnerIndex);
 
 	// 라운드가 바뀌면 외교 매니저에 알립니다.
 	UFUNCTION()

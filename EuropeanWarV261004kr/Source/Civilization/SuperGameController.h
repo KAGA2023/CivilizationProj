@@ -247,6 +247,10 @@ public:
 	UFUNCTION(Client, Reliable)
 	void ClientApplyDiplomacyAction(int32 FromPlayerIndex, int32 TargetPlayerIndex, EDiplomacyActionType ActionType, int32 ActionId);
 
+	// 호스트가 정한 승자 슬롯이 이 기기면 승리 창을 엽니다.
+	UFUNCTION(Client, Reliable)
+	void ClientApplyVictory(int32 WinnerIndex);
+
 private:
 	// 호스트에서 이 컨트롤러의 문명 슬롯을 정합니다. 호스트 0, 참가자 1.
 	int32 GetRequestingPlayerIndex() const;

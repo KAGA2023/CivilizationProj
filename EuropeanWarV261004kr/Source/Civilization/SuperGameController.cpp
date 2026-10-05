@@ -712,3 +712,15 @@ void ASuperGameController::ClientApplyDiplomacyAction_Implementation(int32 FromP
 	Action.ActionId = ActionId;
 	DiplomacyManager->IssueAction(Action);
 }
+
+void ASuperGameController::ClientApplyVictory_Implementation(int32 WinnerIndex)
+{
+	USuperGameInstance* GameInstance = Cast<USuperGameInstance>(GetGameInstance());
+	ASuperPlayerState* LocalState = GameInstance ? GameInstance->GetLocalPlayerState() : nullptr;
+	if (!LocalState || LocalState->PlayerIndex != WinnerIndex || !LocalState->IsAlive())
+	{
+		return;
+	}
+
+	LocalState->OnPlayerVictoryDelegate.Broadcast();
+}
